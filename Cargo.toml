@@ -1,0 +1,35 @@
+# codegraph 工作区清单：三个 crate 的职责边界见 docs/ARCHITECTURE.md
+[workspace]
+resolver = "2"
+members = [
+    "crates/codegraph-core",
+    "crates/codegraph-store",
+    "crates/codegraph-server",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/your-name/codegraph"
+
+[workspace.dependencies]
+# 解析：tree-sitter 0.27 与 grammar 0.23 共用 tree-sitter-language ^0.1，版本兼容已核实
+tree-sitter = "0.27"
+tree-sitter-typescript = "0.23"
+streaming-iterator = "0.1"
+rusqlite = { version = "0.41", features = ["bundled"] }
+ignore = "0.4"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+thiserror = "2"
+rayon = "1"
+toml = "0.9"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

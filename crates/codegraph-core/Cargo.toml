@@ -1,0 +1,18 @@
+[package]
+name = "codegraph-core"
+description = "语言无关图模型 + TypeScript/JS 解析、符号解析与查询算法（纯逻辑，不依赖 SQLite）"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tree-sitter.workspace = true
+tree-sitter-typescript.workspace = true
+streaming-iterator.workspace = true
+ignore.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+rayon.workspace = true
+toml.workspace = true
+tracing.workspace = true

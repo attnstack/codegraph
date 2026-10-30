@@ -1,0 +1,745 @@
+=== who_calls charge ===
+{
+  "symbol": {
+    "id": 25,
+    "kind": "function",
+    "name": "charge",
+    "qualified_name": "charge",
+    "is_exported": true,
+    "file": "src/services/payment.ts",
+    "line": 4
+  },
+  "callers": [
+    {
+      "node": {
+        "id": 21,
+        "kind": "method",
+        "name": "createOrder",
+        "qualified_name": "Checkout.createOrder",
+        "is_exported": true,
+        "file": "src/services/checkout.ts",
+        "line": 5
+      },
+      "sites": [
+        {
+          "file": "src/services/checkout.ts",
+          "line": 7
+        }
+      ]
+    },
+    {
+      "node": {
+        "id": 30,
+        "kind": "method",
+        "name": "processRefund",
+        "qualified_name": "RefundService.processRefund",
+        "is_exported": true,
+        "file": "src/services/refund.ts",
+        "line": 9
+      },
+      "sites": [
+        {
+          "file": "src/services/refund.ts",
+          "line": 11
+        }
+      ]
+    }
+  ],
+  "dynamic_callers": []
+}
+=== impact charge ===
+{
+  "symbol": {
+    "id": 25,
+    "kind": "function",
+    "name": "charge",
+    "qualified_name": "charge",
+    "is_exported": true,
+    "file": "src/services/payment.ts",
+    "line": 4
+  },
+  "items": [
+    {
+      "node": {
+        "id": 21,
+        "kind": "method",
+        "name": "createOrder",
+        "qualified_name": "Checkout.createOrder",
+        "is_exported": true,
+        "file": "src/services/checkout.ts",
+        "line": 5
+      },
+      "risk": 0.8,
+      "hops": 1,
+      "chain": [
+        {
+          "edge_kind": "calls",
+          "from": {
+            "id": 21,
+            "kind": "method",
+            "name": "createOrder",
+            "qualified_name": "Checkout.createOrder",
+            "is_exported": true,
+            "file": "src/services/checkout.ts",
+            "line": 5
+          },
+          "to": {
+            "id": 25,
+            "kind": "function",
+            "name": "charge",
+            "qualified_name": "charge",
+            "is_exported": true,
+            "file": "src/services/payment.ts",
+            "line": 4
+          },
+          "site": {
+            "file": "src/services/checkout.ts",
+            "line": 7
+          }
+        }
+      ]
+    },
+    {
+      "node": {
+        "id": 30,
+        "kind": "method",
+        "name": "processRefund",
+        "qualified_name": "RefundService.processRefund",
+        "is_exported": true,
+        "file": "src/services/refund.ts",
+        "line": 9
+      },
+      "risk": 0.8,
+      "hops": 1,
+      "chain": [
+        {
+          "edge_kind": "calls",
+          "from": {
+            "id": 30,
+            "kind": "method",
+            "name": "processRefund",
+            "qualified_name": "RefundService.processRefund",
+            "is_exported": true,
+            "file": "src/services/refund.ts",
+            "line": 9
+          },
+          "to": {
+            "id": 25,
+            "kind": "function",
+            "name": "charge",
+            "qualified_name": "charge",
+            "is_exported": true,
+            "file": "src/services/payment.ts",
+            "line": 4
+          },
+          "site": {
+            "file": "src/services/refund.ts",
+            "line": 11
+          }
+        }
+      ]
+    }
+  ],
+  "dynamic": [],
+  "affected_files": [
+    "src/index.ts",
+    "src/services/checkout.ts",
+    "src/services/refund.ts"
+  ],
+  "truncated": false
+}
+=== who_calls Checkout ===
+{
+  "symbol": {
+    "id": 20,
+    "kind": "class",
+    "name": "Checkout",
+    "qualified_name": "Checkout",
+    "is_exported": true,
+    "file": "src/services/checkout.ts",
+    "line": 4
+  },
+  "callers": [
+    {
+      "node": {
+        "id": 35,
+        "kind": "file",
+        "name": "tests/checkout.test.ts",
+        "qualified_name": "tests/checkout.test.ts",
+        "is_exported": false,
+        "file": "tests/checkout.test.ts",
+        "line": 0
+      },
+      "sites": [
+        {
+          "file": "tests/checkout.test.ts",
+          "line": 5
+        }
+      ]
+    },
+    {
+      "node": {
+        "id": 9,
+        "kind": "function",
+        "name": "useCart",
+        "qualified_name": "useCart",
+        "is_exported": true,
+        "file": "src/hooks/useCart.ts",
+        "line": 4
+      },
+      "sites": [
+        {
+          "file": "src/hooks/useCart.ts",
+          "line": 5
+        }
+      ]
+    }
+  ],
+  "dynamic_callers": []
+}
+=== impact Checkout ===
+{
+  "symbol": {
+    "id": 20,
+    "kind": "class",
+    "name": "Checkout",
+    "qualified_name": "Checkout",
+    "is_exported": true,
+    "file": "src/services/checkout.ts",
+    "line": 4
+  },
+  "items": [
+    {
+      "node": {
+        "id": 9,
+        "kind": "function",
+        "name": "useCart",
+        "qualified_name": "useCart",
+        "is_exported": true,
+        "file": "src/hooks/useCart.ts",
+        "line": 4
+      },
+      "risk": 0.8,
+      "hops": 1,
+      "chain": [
+        {
+          "edge_kind": "calls",
+          "from": {
+            "id": 9,
+            "kind": "function",
+            "name": "useCart",
+            "qualified_name": "useCart",
+            "is_exported": true,
+            "file": "src/hooks/useCart.ts",
+            "line": 4
+          },
+          "to": {
+            "id": 20,
+            "kind": "class",
+            "name": "Checkout",
+            "qualified_name": "Checkout",
+            "is_exported": true,
+            "file": "src/services/checkout.ts",
+            "line": 4
+          },
+          "site": {
+            "file": "src/hooks/useCart.ts",
+            "line": 5
+          }
+        }
+      ]
+    },
+    {
+      "node": {
+        "id": 28,
+        "kind": "class",
+        "name": "RefundService",
+        "qualified_name": "RefundService",
+        "is_exported": true,
+        "file": "src/services/refund.ts",
+        "line": 4
+      },
+      "risk": 0.48,
+      "hops": 1,
+      "chain": [
+        {
+          "edge_kind": "extends",
+          "from": {
+            "id": 28,
+            "kind": "class",
+            "name": "RefundService",
+            "qualified_name": "RefundService",
+            "is_exported": true,
+            "file": "src/services/refund.ts",
+            "line": 4
+          },
+          "to": {
+            "id": 20,
+            "kind": "class",
+            "name": "Checkout",
+            "qualified_name": "Checkout",
+            "is_exported": true,
+            "file": "src/services/checkout.ts",
+            "line": 4
+          },
+          "site": {
+            "file": "src/services/refund.ts",
+            "line": 4
+          }
+        }
+      ]
+    }
+  ],
+  "dynamic": [],
+  "affected_files": [
+    "src/hooks/useCart.ts",
+    "src/index.ts",
+    "src/services/refund.ts"
+  ],
+  "truncated": false
+}
+=== who_calls format ===
+{
+  "symbol": {
+    "id": 34,
+    "kind": "function",
+    "name": "format",
+    "qualified_name": "format",
+    "is_exported": true,
+    "file": "src/utils/money.ts",
+    "line": 1
+  },
+  "callers": [
+    {
+      "node": {
+        "id": 25,
+        "kind": "function",
+        "name": "charge",
+        "qualified_name": "charge",
+        "is_exported": true,
+        "file": "src/services/payment.ts",
+        "line": 4
+      },
+      "sites": [
+        {
+          "file": "src/services/payment.ts",
+          "line": 6
+        }
+      ]
+    },
+    {
+      "node": {
+        "id": 26,
+        "kind": "function",
+        "name": "refund",
+        "qualified_name": "refund",
+        "is_exported": true,
+        "file": "src/services/payment.ts",
+        "line": 9
+      },
+      "sites": [
+        {
+          "file": "src/services/payment.ts",
+          "line": 10
+        }
+      ]
+    }
+  ],
+  "dynamic_callers": []
+}
+=== impact format ===
+{
+  "symbol": {
+    "id": 34,
+    "kind": "function",
+    "name": "format",
+    "qualified_name": "format",
+    "is_exported": true,
+    "file": "src/utils/money.ts",
+    "line": 1
+  },
+  "items": [
+    {
+      "node": {
+        "id": 25,
+        "kind": "function",
+        "name": "charge",
+        "qualified_name": "charge",
+        "is_exported": true,
+        "file": "src/services/payment.ts",
+        "line": 4
+      },
+      "risk": 0.8,
+      "hops": 1,
+      "chain": [
+        {
+          "edge_kind": "calls",
+          "from": {
+            "id": 25,
+            "kind": "function",
+            "name": "charge",
+            "qualified_name": "charge",
+            "is_exported": true,
+            "file": "src/services/payment.ts",
+            "line": 4
+          },
+          "to": {
+            "id": 34,
+            "kind": "function",
+            "name": "format",
+            "qualified_name": "format",
+            "is_exported": true,
+            "file": "src/utils/money.ts",
+            "line": 1
+          },
+          "site": {
+            "file": "src/services/payment.ts",
+            "line": 6
+          }
+        }
+      ]
+    },
+    {
+      "node": {
+        "id": 26,
+        "kind": "function",
+        "name": "refund",
+        "qualified_name": "refund",
+        "is_exported": true,
+        "file": "src/services/payment.ts",
+        "line": 9
+      },
+      "risk": 0.8,
+      "hops": 1,
+      "chain": [
+        {
+          "edge_kind": "calls",
+          "from": {
+            "id": 26,
+            "kind": "function",
+            "name": "refund",
+            "qualified_name": "refund",
+            "is_exported": true,
+            "file": "src/services/payment.ts",
+            "line": 9
+          },
+          "to": {
+            "id": 34,
+            "kind": "function",
+            "name": "format",
+            "qualified_name": "format",
+            "is_exported": true,
+            "file": "src/utils/money.ts",
+            "line": 1
+          },
+          "site": {
+            "file": "src/services/payment.ts",
+            "line": 10
+          }
+        }
+      ]
+    },
+    {
+      "node": {
+        "id": 21,
+        "kind": "method",
+        "name": "createOrder",
+        "qualified_name": "Checkout.createOrder",
+        "is_exported": true,
+        "file": "src/services/checkout.ts",
+        "line": 5
+      },
+      "risk": 0.64,
+      "hops": 2,
+      "chain": [
+        {
+          "edge_kind": "calls",
+          "from": {
+            "id": 25,
+            "kind": "function",
+            "name": "charge",
+            "qualified_name": "charge",
+            "is_exported": true,
+            "file": "src/services/payment.ts",
+            "line": 4
+          },
+          "to": {
+            "id": 34,
+            "kind": "function",
+            "name": "format",
+            "qualified_name": "format",
+            "is_exported": true,
+            "file": "src/utils/money.ts",
+            "line": 1
+          },
+          "site": {
+            "file": "src/services/payment.ts",
+            "line": 6
+          }
+        },
+        {
+          "edge_kind": "calls",
+          "from": {
+            "id": 21,
+            "kind": "method",
+            "name": "createOrder",
+            "qualified_name": "Checkout.createOrder",
+            "is_exported": true,
+            "file": "src/services/checkout.ts",
+            "line": 5
+          },
+          "to": {
+            "id": 25,
+            "kind": "function",
+            "name": "charge",
+            "qualified_name": "charge",
+            "is_exported": true,
+            "file": "src/services/payment.ts",
+            "line": 4
+          },
+          "site": {
+            "file": "src/services/checkout.ts",
+            "line": 7
+          }
+        }
+      ]
+    },
+    {
+      "node": {
+        "id": 30,
+        "kind": "method",
+        "name": "processRefund",
+        "qualified_name": "RefundService.processRefund",
+        "is_exported": true,
+        "file": "src/services/refund.ts",
+        "line": 9
+      },
+      "risk": 0.64,
+      "hops": 2,
+      "chain": [
+        {
+          "edge_kind": "calls",
+          "from": {
+            "id": 25,
+            "kind": "function",
+            "name": "charge",
+            "qualified_name": "charge",
+            "is_exported": true,
+            "file": "src/services/payment.ts",
+            "line": 4
+          },
+          "to": {
+            "id": 34,
+            "kind": "function",
+            "name": "format",
+            "qualified_name": "format",
+            "is_exported": true,
+            "file": "src/utils/money.ts",
+            "line": 1
+          },
+          "site": {
+            "file": "src/services/payment.ts",
+            "line": 6
+          }
+        },
+        {
+          "edge_kind": "calls",
+          "from": {
+            "id": 30,
+            "kind": "method",
+            "name": "processRefund",
+            "qualified_name": "RefundService.processRefund",
+            "is_exported": true,
+            "file": "src/services/refund.ts",
+            "line": 9
+          },
+          "to": {
+            "id": 25,
+            "kind": "function",
+            "name": "charge",
+            "qualified_name": "charge",
+            "is_exported": true,
+            "file": "src/services/payment.ts",
+            "line": 4
+          },
+          "site": {
+            "file": "src/services/refund.ts",
+            "line": 11
+          }
+        }
+      ]
+    }
+  ],
+  "dynamic": [],
+  "affected_files": [
+    "src/services/payment.ts"
+  ],
+  "truncated": false
+}
+=== who_calls App ===
+{
+  "symbol": {
+    "id": 2,
+    "kind": "function",
+    "name": "App",
+    "qualified_name": "App",
+    "is_exported": true,
+    "file": "src/components/App.tsx",
+    "line": 4
+  },
+  "callers": [],
+  "dynamic_callers": []
+}
+=== impact App ===
+{
+  "symbol": {
+    "id": 2,
+    "kind": "function",
+    "name": "App",
+    "qualified_name": "App",
+    "is_exported": true,
+    "file": "src/components/App.tsx",
+    "line": 4
+  },
+  "items": [],
+  "dynamic": [],
+  "affected_files": [],
+  "truncated": false
+}
+=== trace createOrder→format ===
+{
+  "entry": {
+    "id": 21,
+    "kind": "method",
+    "name": "createOrder",
+    "qualified_name": "Checkout.createOrder",
+    "is_exported": true,
+    "file": "src/services/checkout.ts",
+    "line": 5
+  },
+  "sink": {
+    "id": 34,
+    "kind": "function",
+    "name": "format",
+    "qualified_name": "format",
+    "is_exported": true,
+    "file": "src/utils/money.ts",
+    "line": 1
+  },
+  "found": true,
+  "path": [
+    {
+      "edge_kind": "calls",
+      "from": {
+        "id": 21,
+        "kind": "method",
+        "name": "createOrder",
+        "qualified_name": "Checkout.createOrder",
+        "is_exported": true,
+        "file": "src/services/checkout.ts",
+        "line": 5
+      },
+      "to": {
+        "id": 25,
+        "kind": "function",
+        "name": "charge",
+        "qualified_name": "charge",
+        "is_exported": true,
+        "file": "src/services/payment.ts",
+        "line": 4
+      },
+      "site": {
+        "file": "src/services/checkout.ts",
+        "line": 7
+      }
+    },
+    {
+      "edge_kind": "calls",
+      "from": {
+        "id": 25,
+        "kind": "function",
+        "name": "charge",
+        "qualified_name": "charge",
+        "is_exported": true,
+        "file": "src/services/payment.ts",
+        "line": 4
+      },
+      "to": {
+        "id": 34,
+        "kind": "function",
+        "name": "format",
+        "qualified_name": "format",
+        "is_exported": true,
+        "file": "src/utils/money.ts",
+        "line": 1
+      },
+      "site": {
+        "file": "src/services/payment.ts",
+        "line": 6
+      }
+    }
+  ]
+}
+=== hotspots ===
+[
+  {
+    "node": {
+      "id": 20,
+      "kind": "class",
+      "name": "Checkout",
+      "qualified_name": "Checkout",
+      "is_exported": true,
+      "file": "src/services/checkout.ts",
+      "line": 4
+    },
+    "score": 0.137247
+  },
+  {
+    "node": {
+      "id": 34,
+      "kind": "function",
+      "name": "format",
+      "qualified_name": "format",
+      "is_exported": true,
+      "file": "src/utils/money.ts",
+      "line": 1
+    },
+    "score": 0.134007
+  },
+  {
+    "node": {
+      "id": 5,
+      "kind": "function",
+      "name": "Button",
+      "qualified_name": "Button",
+      "is_exported": true,
+      "file": "src/components/Button.tsx",
+      "line": 5
+    },
+    "score": 0.09404
+  },
+  {
+    "node": {
+      "id": 25,
+      "kind": "function",
+      "name": "charge",
+      "qualified_name": "charge",
+      "is_exported": true,
+      "file": "src/services/payment.ts",
+      "line": 4
+    },
+    "score": 0.09404
+  },
+  {
+    "node": {
+      "id": 32,
+      "kind": "function",
+      "name": "log",
+      "qualified_name": "log",
+      "is_exported": true,
+      "file": "src/utils/logger.ts",
+      "line": 1
+    },
+    "score": 0.090799
+  }
+]

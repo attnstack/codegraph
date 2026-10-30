@@ -1,0 +1,21 @@
+[package]
+name = "codegraph-server"
+description = "CLI + MCP stdio 双出口；构建编排（walk→parse→resolve→store）"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "codegraph"
+path = "src/main.rs"
+
+[dependencies]
+codegraph-core = { path = "../codegraph-core" }
+codegraph-store = { path = "../codegraph-store" }
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+rayon.workspace = true

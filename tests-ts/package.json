@@ -1,0 +1,13 @@
+{
+  "name": "codegraph-contract-tests",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "codegraph MCP 服务的契约测试：用官方 TypeScript SDK 作为标准客户端验证手写 stdio 服务端",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2"
+  }
+}

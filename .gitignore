@@ -1,0 +1,9 @@
+/target
+node_modules/
+*.db
+*.db-wal
+*.db-shm
+.codegraph/
+__pycache__/
+fixtures/**/.codegraph/
+bench-corpus/

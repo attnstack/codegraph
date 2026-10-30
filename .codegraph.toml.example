@@ -1,0 +1,31 @@
+# codegraph 配置样例：复制为仓库根目录下的 `.codegraph.toml` 即生效。
+# 所有字段都有内置默认值（见 crates/codegraph-core/src/config.rs），只覆盖需要改的。
+
+# 影响面分析剪枝：任一路径分段命中即整支剪掉（分段精确匹配，非子串）
+impact-exclude-components = ["tests", "test", "__tests__", "__mocks__", "spec", "specs", "e2e", "generated", "__generated__", "vendor", "dist", "node_modules", "coverage", "stories"]
+
+# 文件名主干含这些标记的文件在影响面中剪掉（checkout.test.ts / order.spec.ts）
+impact-exclude-stem-markers = [".test", ".spec"]
+
+# 反向闭包深度与节点数上限
+impact-depth = 8
+impact-max-nodes = 500
+
+# 风险衰减与边类型权重：risk(child) = risk(parent) * risk-decay * type-weight
+risk-decay = 0.8
+weight-call = 1.0
+weight-override = 0.7
+weight-extends = 0.6
+weight-implements = 0.6
+
+# PageRank
+pagerank-damping = 0.85
+pagerank-tolerance = 0.000001
+pagerank-max-iter = 100
+cross-file-bonus = 1.5
+
+# trace 双向 BFS 单侧限深
+trace-depth = 5
+
+# 查询前自动检测文件变化并增量重建（MCP 场景建议开启）
+auto-refresh = true
