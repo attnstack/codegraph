@@ -1,6 +1,6 @@
 //! MCP stdio 服务：手写的最小 JSON-RPC 2.0 子集（newline-delimited）。
 //!
-//! 为什么不用官方 Rust SDK（rmcp）（面试点，主动讲）：
+//! 为什么不用官方 Rust SDK（rmcp）：
 //!   1) 我们只需要 3 个方法：initialize / tools/list / tools/call，
 //!      协议面小到手写 200 行以内——依赖一整套 tokio+tower 是用大炮打蚊子；
 //!   2) 单二进制零运行时依赖是本项目的分发卖点，SDK 会拖进整个 async 运行时；

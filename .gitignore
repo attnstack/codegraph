@@ -7,3 +7,8 @@ node_modules/
 __pycache__/
 fixtures/**/.codegraph/
 bench-corpus/
+
+# 内部材料：只留本地，不入库
+docs/REVIEW.md
+docs/INTERVIEW.md
+docs/技术方案.md
