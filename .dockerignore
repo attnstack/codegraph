@@ -1,0 +1,10 @@
+target
+.git
+.codegraph
+**/.codegraph
+tests-ts/node_modules
+docs
+fixtures
+scripts
+*.md
+!README.md

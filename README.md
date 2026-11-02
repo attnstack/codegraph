@@ -46,6 +46,14 @@ CLI 之外还有一个 MCP stdio 出口，Agent 可以直接调用同一套查�
 }
 ```
 
+不想装 Rust 工具链的话，仓库带了 Dockerfile：
+
+```bash
+docker build -t codegraph .
+docker run -i --rm -v /path/to/your/repo:/repo codegraph        # 起 MCP stdio
+docker run --rm -v /path/to/your/repo:/repo codegraph index --root /repo   # 当 CLI 用
+```
+
 提供 6 个工具：`who_calls` / `impact` / `trace` / `hotspots` / `search` / `archaeology`。改完文件不用手动重建——每次工具调用前会做 mtime/size 预筛，发现漂移自动增量更新。协议实现是手写的最小 JSON-RPC 子集，用官方 TypeScript SDK 做了[契约测试](tests-ts/)（这也是 CI 的一部分）。
 
 `archaeology` 单独说一下：基于 `git blame -C` 做代码考古，输入一个符号，返回它每行是哪个 commit 引入的、谁写的、关联哪个 PR。接手别人的老模块时挺好用。
