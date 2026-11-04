@@ -1,6 +1,6 @@
 {
   "name": "codegraph-mcp-server",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Deterministic, explainable call graph for TS/JS and Python repos — who-calls, impact with evidence chains, tracing, cycles. CLI + MCP stdio.",
   "license": "MIT",
   "repository": {
@@ -21,7 +21,8 @@
     "codegraph": "bin/codegraph.js"
   },
   "scripts": {
-    "postinstall": "node install.js"
+    "postinstall": "node install.js",
+    "prepublishOnly": "node -e \"const fs=require('fs');const bad=['bin/codegraph','bin/codegraph.exe'].filter(fs.existsSync);if(bad.length){console.error('bin 里有残留二进制（会把旧版本打进 tarball）,先删除:',bad);process.exit(1)}\""
   },
   "files": [
     "bin",
