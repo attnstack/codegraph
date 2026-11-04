@@ -64,6 +64,22 @@ enum Cmd {
         #[arg(long)]
         root: Option<PathBuf>,
     },
+    /// 这个符号调用了谁（who-calls 的镜像）
+    Callees {
+        symbol: String,
+        #[arg(long)]
+        root: Option<PathBuf>,
+    },
+    /// 孤儿函数：无静态调用者且非对外 API
+    DeadCode {
+        #[arg(long)]
+        root: Option<PathBuf>,
+    },
+    /// import 循环依赖
+    Cycles {
+        #[arg(long)]
+        root: Option<PathBuf>,
+    },
     /// 加权 PageRank 核心函数
     Hotspots {
         #[arg(long, default_value_t = 10)]
@@ -181,6 +197,28 @@ fn run(cli: Cli) -> anyhow::Result<i32> {
             let s = commands::resolve_unique(&db, &sink)?;
             let report = codegraph_core::query::trace(&snap, e.id, s.id, &cfg, depth);
             output::print_trace(&report, json)?;
+            Ok(0)
+        }
+        Callees { symbol, root } => {
+            let cfg = commands::load_cfg(root)?;
+            let (db, snap) = commands::open_for_query(&cfg)?;
+            let start = commands::resolve_unique(&db, &symbol)?;
+            let report = codegraph_core::query::callees(&snap, start.id);
+            output::print_callees(&report, json)?;
+            Ok(0)
+        }
+        DeadCode { root } => {
+            let cfg = commands::load_cfg(root)?;
+            let (_, snap) = commands::open_for_query(&cfg)?;
+            let report = codegraph_core::query::dead_code(&snap, &cfg);
+            output::print_dead_code(&report, json)?;
+            Ok(0)
+        }
+        Cycles { root } => {
+            let cfg = commands::load_cfg(root)?;
+            let (_, snap) = commands::open_for_query(&cfg)?;
+            let report = codegraph_core::query::cycles(&snap);
+            output::print_cycles(&report, json)?;
             Ok(0)
         }
         Hotspots { top, root } => {

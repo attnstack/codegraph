@@ -7,7 +7,7 @@
 #![allow(clippy::needless_range_loop)]
 
 use crate::model::{ImportRow, NodeKind, NodeRow, RefRow};
-use crate::parse::{RawFile, RawImport, RawImportKind, RawRefKind};
+use crate::parse::{Lang, RawFile, RawImport, RawImportKind, RawRefKind};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -39,6 +39,8 @@ pub struct ViewRef {
 #[derive(Debug, Clone, Default)]
 pub struct ViewFile {
     pub path: String,
+    /// 语言（决定 import 解析策略 / self 语义 / 内建名单）
+    pub lang: Lang,
     pub symbols: Vec<ViewSymbol>,
     pub imports: Vec<RawImport>,
     pub refs: Vec<ViewRef>,
@@ -57,6 +59,7 @@ impl ViewFile {
     pub fn from_raw(path: &str, raw: RawFile) -> ViewFile {
         ViewFile {
             path: path.to_string(),
+            lang: Lang::from_path(path).unwrap_or(Lang::Ts),
             symbols: raw
                 .symbols
                 .into_iter()
@@ -95,6 +98,7 @@ impl ViewFile {
     /// DB 不存 container —— span 包含关系可从节点 span 确定性重算，不必持久化。
     pub fn from_rows(
         path: &str,
+        lang: Lang,
         nodes: &[NodeRow],
         imports: &[ImportRow],
         refs: &[RefRow],
@@ -145,6 +149,7 @@ impl ViewFile {
             .collect();
         let mut vf = ViewFile {
             path: path.to_string(),
+            lang,
             symbols,
             imports,
             refs: vrefs,

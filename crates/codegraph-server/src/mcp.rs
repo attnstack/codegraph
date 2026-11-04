@@ -21,16 +21,44 @@ const LATEST_VERSION: &str = "2025-06-18";
 
 struct McpState {
     cfg: Config,
+    /// 进程内快照缓存：agent 会话里工具调用密集，
+    /// 每次全量装载（万级节点/边）是纯浪费——只在文件漂移或首次时重建。
+    cache: std::sync::Mutex<Option<std::sync::Arc<codegraph_core::model::Snapshot>>>,
 }
 
 impl McpState {
-    fn db(&self) -> Result<(GraphDb, codegraph_core::model::Snapshot)> {
-        commands::open_for_query(&self.cfg)
+    fn ensure(&self) -> Result<(GraphDb, std::sync::Arc<codegraph_core::model::Snapshot>)> {
+        let path = self.cfg.db_path();
+        if !path.exists() {
+            commands::run_build(&self.cfg, false)?;
+        }
+        let mut drifted = false;
+        if self.cfg.auto_refresh {
+            let db = GraphDb::open(&path)?;
+            if commands::needs_refresh_pub(&db, &self.cfg)? {
+                tracing::info!("MCP: 检测到文件变化，自动增量重建");
+                commands::run_build(&self.cfg, false)?;
+                drifted = true;
+            }
+        }
+        let mut cache = self.cache.lock().unwrap();
+        if drifted || cache.is_none() {
+            let db = GraphDb::open(&path)?;
+            *cache = Some(std::sync::Arc::new(
+                db.load_snapshot(self.cfg.cross_file_bonus)?,
+            ));
+        }
+        let db = GraphDb::open(&path)?;
+        let snap = cache.as_ref().unwrap().clone();
+        Ok((db, snap))
     }
 }
 
 pub fn serve(cfg: Config) -> Result<()> {
-    let state = McpState { cfg };
+    let state = McpState {
+        cfg,
+        cache: std::sync::Mutex::new(None),
+    };
     let stdin = std::io::stdin();
     let mut reader = stdin.lock();
     let stdout = std::io::stdout();
@@ -136,14 +164,14 @@ fn call_tool(state: &McpState, name: &str, args: &Value) -> Result<String> {
     match name {
         "who_calls" => {
             let symbol = get("symbol").ok_or_else(|| anyhow::anyhow!("缺少参数 symbol"))?;
-            let (db, snap) = state.db()?;
+            let (db, snap) = state.ensure()?;
             let start = commands::resolve_unique(&db, &symbol)?;
             let r = codegraph_core::query::who_calls(&snap, start.id);
             Ok(serde_json::to_string_pretty(&r)?)
         }
         "impact" => {
             let symbol = get("symbol").ok_or_else(|| anyhow::anyhow!("缺少参数 symbol"))?;
-            let (db, snap) = state.db()?;
+            let (db, snap) = state.ensure()?;
             let start = commands::resolve_unique(&db, &symbol)?;
             let r = codegraph_core::query::impact(
                 &snap,
@@ -157,21 +185,38 @@ fn call_tool(state: &McpState, name: &str, args: &Value) -> Result<String> {
         "trace" => {
             let entry = get("entry").ok_or_else(|| anyhow::anyhow!("缺少参数 entry"))?;
             let sink = get("sink").ok_or_else(|| anyhow::anyhow!("缺少参数 sink"))?;
-            let (db, snap) = state.db()?;
+            let (db, snap) = state.ensure()?;
             let e = commands::resolve_unique(&db, &entry)?;
             let s = commands::resolve_unique(&db, &sink)?;
             let r = codegraph_core::query::trace(&snap, e.id, s.id, &state.cfg, get_usize("depth"));
             Ok(serde_json::to_string_pretty(&r)?)
         }
+        "callees" => {
+            let symbol = get("symbol").ok_or_else(|| anyhow::anyhow!("缺少参数 symbol"))?;
+            let (db, snap) = state.ensure()?;
+            let start = commands::resolve_unique(&db, &symbol)?;
+            let r = codegraph_core::query::callees(&snap, start.id);
+            Ok(serde_json::to_string_pretty(&r)?)
+        }
+        "dead_code" => {
+            let (_, snap) = state.ensure()?;
+            let r = codegraph_core::query::dead_code(&snap, &state.cfg);
+            Ok(serde_json::to_string_pretty(&r)?)
+        }
+        "cycles" => {
+            let (_, snap) = state.ensure()?;
+            let r = codegraph_core::query::cycles(&snap);
+            Ok(serde_json::to_string_pretty(&r)?)
+        }
         "hotspots" => {
-            let (_, snap) = state.db()?;
+            let (_, snap) = state.ensure()?;
             let top = get_usize("top_k").unwrap_or(10);
             let items = codegraph_core::query::hotspots(&snap, &state.cfg, top);
             Ok(serde_json::to_string_pretty(&items)?)
         }
         "search" => {
             let query = get("query").ok_or_else(|| anyhow::anyhow!("缺少参数 query"))?;
-            let (db, _) = state.db()?;
+            let (db, _) = state.ensure()?;
             let hits =
                 db.search_nodes(&query, get_usize("limit").unwrap_or(state.cfg.search_limit))?;
             let v: Vec<Value> = hits
@@ -224,6 +269,21 @@ fn tool_definitions() -> Vec<Value> {
                 "sink": { "type": "string" },
                 "depth": { "type": "integer", "description": "单侧限深，默认 5" }
             }), &["entry", "sink"])
+        }),
+        json!({
+            "name": "callees",
+            "description": "查询某个符号静态调用了哪些下游符号（who_calls 的镜像），附调用点位置",
+            "inputSchema": schema(json!({ "symbol": { "type": "string" } }), &["symbol"])
+        }),
+        json!({
+            "name": "dead_code",
+            "description": "孤儿函数清单：无静态调用者且非对外 API（TS 非导出 / Python 单下划线私有），删除前需人工确认动态调用",
+            "inputSchema": schema(json!({}), &[])
+        }),
+        json!({
+            "name": "cycles",
+            "description": "import 循环依赖：文件级强连通分量清单",
+            "inputSchema": schema(json!({}), &[])
         }),
         json!({
             "name": "hotspots",

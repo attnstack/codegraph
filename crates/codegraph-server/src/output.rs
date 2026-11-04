@@ -3,7 +3,10 @@
 
 use crate::commands::{ArchReport, BuildStatsPublic};
 use anyhow::Result;
-use codegraph_core::model::{HotspotItem, ImpactReport, TraceReport, WhoCallsReport};
+use codegraph_core::model::{
+    CalleesReport, CyclesReport, DeadCodeReport, HotspotItem, ImpactReport, TraceReport,
+    WhoCallsReport,
+};
 use codegraph_store::Stats;
 
 pub fn print_build_stats(s: &BuildStatsPublic, json: bool) -> Result<()> {
@@ -52,6 +55,63 @@ pub fn print_who_calls(r: &WhoCallsReport, json: bool) -> Result<()> {
         for d in r.dynamic_callers.iter().take(10) {
             println!("  ?  {}  {}:{}  [{}]", d.name, d.file, d.line, d.status);
         }
+    }
+    Ok(())
+}
+
+pub fn print_callees(r: &CalleesReport, json: bool) -> Result<()> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(r)?);
+        return Ok(());
+    }
+    let s = &r.symbol;
+    println!("`{}` ({}) {} 的调用目标:", s.qualified_name, s.kind, loc(s));
+    if r.callees.is_empty() {
+        println!("  没有静态可确认的调用目标。");
+    } else {
+        for c in &r.callees {
+            println!("  ▸ {}  {}", c.node.qualified_name, loc(&c.node));
+            for site in &c.sites {
+                println!("      调用点 {}:{}", site.file, site.line);
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn print_dead_code(r: &DeadCodeReport, json: bool) -> Result<()> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(r)?);
+        return Ok(());
+    }
+    println!(
+        "孤儿函数（扫描 {} 个候选，{} 个命中）:",
+        r.scanned,
+        r.items.len()
+    );
+    for n in &r.items {
+        println!("  ⚠ {}  {}", n.qualified_name, loc(n));
+    }
+    println!("注: {}", r.note);
+    Ok(())
+}
+
+pub fn print_cycles(r: &CyclesReport, json: bool) -> Result<()> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(r)?);
+        return Ok(());
+    }
+    if r.cycles.is_empty() {
+        println!("没有 import 循环（扫描 {} 个文件）。", r.scanned_files);
+        return Ok(());
+    }
+    println!(
+        "import 循环（{} 个，涉及 {} 个文件）:",
+        r.cycles.len(),
+        r.scanned_files
+    );
+    for (i, cycle) in r.cycles.iter().enumerate() {
+        println!(" 环 {}: {}", i + 1, cycle.join(" → "));
     }
     Ok(())
 }

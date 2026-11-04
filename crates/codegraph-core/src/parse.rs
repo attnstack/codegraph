@@ -1,14 +1,12 @@
 //! tree-sitter 抽取层：源码字节流 → RawFile（符号 / 引用 / 导入 / 局部名）。
 //!
 //! 双通道设计（why）：tree-sitter query 擅长形态稳定的语法模式（定义、调用），
-//! 但 import/export 子句形态繁多（default/namespace/named/re-export/星号），
-//! 用 query 逐个枚举既冗长又脆——改用一次手写遍历统一处理。
-//! 局部名（参数、内层变量）也走手写遍历，用于「遮蔽检测」。
-//
-// lint 豁免（有意为之的模式）：
-// - needless_range_loop：span 包含关系的双下标扫描，按下标对比比迭代器更直白
-// - type_complexity：抽取产物的组合类型，均为内部结构不外泄
-// - collapsible_match：match 守卫拆分 require 特例，可读性优先
+//! 但 import 子句/局部名/类基类等形态在语言间差异大——改用一次手写遍历按语言分支处理。
+//! query 通道按语言选择规则集（languages/<lang>/queries.scm），组间独立编译优雅降级。
+//!
+//! lint 豁免（有意为之的模式）：
+//! - needless_range_loop：span 包含关系的双下标扫描，按下标对比比迭代器更直白
+//! - type_complexity：抽取产物的组合类型，均为内部结构不外泄
 #![allow(
     clippy::needless_range_loop,
     clippy::type_complexity,
@@ -19,7 +17,39 @@ use crate::model::NodeKind;
 use std::collections::HashSet;
 use std::sync::OnceLock;
 use tree_sitter::{Node, Parser, Query, QueryCursor};
+use tree_sitter_python::LANGUAGE as LANGUAGE_PYTHON;
 use tree_sitter_typescript::{LANGUAGE_TSX, LANGUAGE_TYPESCRIPT};
+
+// ---------- 语言标识 ----------
+
+/// 支持的语言。影响：query 规则集选择、import 解析策略、内建名单、self/cls 语义。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum Lang {
+    #[default]
+    Ts,
+    Tsx,
+    Python,
+}
+
+impl Lang {
+    pub fn from_path(rel: &str) -> Option<Lang> {
+        let ext = rel.rsplit('.').next()?;
+        match ext {
+            // TS grammar 是 JS 的语法超集，.js/.mjs/.cjs 复用同一 grammar（代价：.js 里的 JSX 不识别）
+            "ts" | "mts" | "cts" | "js" | "mjs" | "cjs" => Some(Lang::Ts),
+            "tsx" | "jsx" => Some(Lang::Tsx),
+            "py" => Some(Lang::Python),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Lang::Ts | Lang::Tsx => "ts",
+            Lang::Python => "python",
+        }
+    }
+}
 
 // ---------- 原始抽取产物 ----------
 
@@ -72,7 +102,7 @@ pub struct RawRef {
     pub receiver: Option<String>,
     pub span: (usize, usize),
     pub line_start: u32,
-    /// 名字被本文件的参数/内层变量遮蔽 → 三级解析时直接判 dynamic，不猜
+    /// 名字被本文件的参数/局部变量遮蔽 → 三级解析时直接判 dynamic，不猜
     pub shadowed: bool,
     /// 包含该引用的最内层符号下标；None = 文件顶层代码
     pub owner: Option<usize>,
@@ -100,15 +130,6 @@ fn text(node: Node<'_>, bytes: &[u8]) -> String {
     node.utf8_text(bytes).unwrap_or("").to_string()
 }
 
-// tree-sitter 0.27 的 row 是 usize，图模型统一用 u32 存行号
-fn row_start(node: Node<'_>) -> u32 {
-    node.start_position().row as u32 + 1
-}
-
-fn row_end(node: Node<'_>) -> u32 {
-    node.end_position().row as u32 + 1
-}
-
 fn strip_quotes(s: &str) -> String {
     s.trim_matches(|c| c == '"' || c == '\'' || c == '`')
         .to_string()
@@ -122,16 +143,13 @@ fn truncate(s: &str, n: usize) -> String {
     }
 }
 
-// ---------- 语言选择 ----------
+// tree-sitter 的 row 是 usize，图模型统一用 u32 存行号
+fn row_start(node: Node<'_>) -> u32 {
+    node.start_position().row as u32 + 1
+}
 
-fn language_for_path(rel: &str) -> Option<(tree_sitter::Language, bool)> {
-    let ext = rel.rsplit('.').next()?;
-    match ext {
-        // TS grammar 是 JS 的语法超集，.js/.mjs/.cjs 复用同一 grammar（代价：.js 里的 JSX 不识别）
-        "ts" | "mts" | "cts" | "js" | "mjs" | "cjs" => Some((LANGUAGE_TYPESCRIPT.into(), false)),
-        "tsx" | "jsx" => Some((LANGUAGE_TSX.into(), true)),
-        _ => None,
-    }
+fn row_end(node: Node<'_>) -> u32 {
+    node.end_position().row as u32 + 1
 }
 
 // ---------- query 组管理 ----------
@@ -175,7 +193,7 @@ struct QuerySet {
     jsx: Option<QueryGroup>,
 }
 
-fn compile_set(lang: tree_sitter::Language) -> QuerySet {
+fn compile_set(lang: tree_sitter::Language, scm: &'static str) -> QuerySet {
     // 单组独立编译：一组的语法形态变化不拖垮其余组（优雅降级 + 可观测）
     let build = |src: &str| -> Option<QueryGroup> {
         match Query::new(&lang, src) {
@@ -197,8 +215,6 @@ fn compile_set(lang: tree_sitter::Language) -> QuerySet {
             }
         }
     };
-    static SCM: OnceLock<&'static str> = OnceLock::new();
-    let scm = SCM.get_or_init(|| include_str!("../../../languages/typescript/queries.scm"));
     let mut set = QuerySet {
         defs: None,
         calls: None,
@@ -217,23 +233,36 @@ fn compile_set(lang: tree_sitter::Language) -> QuerySet {
 
 static TS_SET: OnceLock<QuerySet> = OnceLock::new();
 static TSX_SET: OnceLock<QuerySet> = OnceLock::new();
+static PY_SET: OnceLock<QuerySet> = OnceLock::new();
+
+const TS_SCM: &str = include_str!("../../../languages/typescript/queries.scm");
+const PY_SCM: &str = include_str!("../../../languages/python/queries.scm");
+
+fn query_set(lang: Lang, ts_lang: tree_sitter::Language) -> &'static QuerySet {
+    match lang {
+        Lang::Ts => TS_SET.get_or_init(|| compile_set(ts_lang, TS_SCM)),
+        Lang::Tsx => TSX_SET.get_or_init(|| compile_set(ts_lang, TS_SCM)),
+        Lang::Python => PY_SET.get_or_init(|| compile_set(ts_lang, PY_SCM)),
+    }
+}
 
 // ---------- 主入口 ----------
 
 /// 解析单文件。不返回 Result：单文件失败只降级为 error_count=1 的空结果，
 /// 不允许一个坏文件中断整个仓库的索引（可恢复错误的边界画在文件级）。
 pub fn parse_file(rel: &str, bytes: &[u8]) -> RawFile {
-    let Some((lang, jsx_mode)) = language_for_path(rel) else {
+    let Some(lang) = Lang::from_path(rel) else {
         return RawFile::default();
     };
-    let set = if jsx_mode {
-        TSX_SET.get_or_init(|| compile_set(lang.clone()))
-    } else {
-        TS_SET.get_or_init(|| compile_set(lang.clone()))
+    let ts_lang: tree_sitter::Language = match lang {
+        Lang::Ts => LANGUAGE_TYPESCRIPT.into(),
+        Lang::Tsx => LANGUAGE_TSX.into(),
+        Lang::Python => LANGUAGE_PYTHON.into(),
     };
+    let set = query_set(lang, ts_lang.clone());
 
     let mut parser = Parser::new();
-    if let Err(e) = parser.set_language(&lang) {
+    if let Err(e) = parser.set_language(&ts_lang) {
         tracing::warn!("set_language 失败 {rel}: {e}");
         return RawFile {
             error_count: 1,
@@ -254,7 +283,7 @@ pub fn parse_file(rel: &str, bytes: &[u8]) -> RawFile {
         ..Default::default()
     };
 
-    let manual = manual_walk(root, bytes);
+    let manual = manual_walk(root, lang, bytes);
     out.error_count = manual.error_count;
     out.imports = manual.imports;
 
@@ -271,18 +300,49 @@ pub fn parse_file(rel: &str, bytes: &[u8]) -> RawFile {
                 continue;
             };
             let name = text(name_node, bytes);
-            let kind = match node.kind() {
-                "function_declaration" | "variable_declarator" => NodeKind::Function,
-                "method_definition" | "public_field_definition" => {
-                    // 对象字面量里的方法不属于任何类，跳过（其调用点本来就解析不到类）
-                    match node.parent() {
-                        Some(p) if p.kind() == "class_body" => NodeKind::Method,
+            let (kind, exported) = match lang {
+                Lang::Ts | Lang::Tsx => {
+                    let kind = match node.kind() {
+                        "function_declaration" | "variable_declarator" => NodeKind::Function,
+                        "method_definition" | "public_field_definition" => {
+                            // 对象字面量里的方法不属于任何类，跳过（其调用点本来就解析不到类）
+                            match node.parent() {
+                                Some(p) if p.kind() == "class_body" => NodeKind::Method,
+                                _ => continue,
+                            }
+                        }
+                        "class_declaration" | "abstract_class_declaration" => NodeKind::Class,
+                        "interface_declaration" => NodeKind::Interface,
                         _ => continue,
-                    }
+                    };
+                    (kind, has_export_ancestor(node, 4))
                 }
-                "class_declaration" | "abstract_class_declaration" => NodeKind::Class,
-                "interface_declaration" => NodeKind::Interface,
-                _ => continue,
+                Lang::Python => {
+                    // 类就是类；函数看最近的定义祖先——先遇到类是方法，先遇到函数是嵌套函数。
+                    // （之前漏了 class_definition → Class 的映射，类全被标成 function，
+                    //   类层级地图/override 推导/self 方法链全断——python golden 测试抓的就是这个。）
+                    let mut kind = if node.kind() == "class_definition" {
+                        NodeKind::Class
+                    } else {
+                        NodeKind::Function
+                    };
+                    if kind == NodeKind::Function {
+                        let mut cur = node.parent();
+                        while let Some(p) = cur {
+                            match p.kind() {
+                                "class_definition" => {
+                                    kind = NodeKind::Method;
+                                    break;
+                                }
+                                "function_definition" => break,
+                                // decorated_definition 是定义的包装节点，穿透它继续找
+                                _ => cur = p.parent(),
+                            }
+                        }
+                    }
+                    // python 语义：一切符号皆可导入
+                    (kind, true)
+                }
             };
             let span = (node.byte_range().start, node.byte_range().end);
             out.symbols.push(RawSymbol {
@@ -292,7 +352,7 @@ pub fn parse_file(rel: &str, bytes: &[u8]) -> RawFile {
                 span,
                 line_start: row_start(node),
                 line_end: row_end(node),
-                exported: has_export_ancestor(node, 4),
+                exported,
                 is_default: manual.default_spans.contains(&span),
                 container: None,
             });
@@ -331,7 +391,7 @@ pub fn parse_file(rel: &str, bytes: &[u8]) -> RawFile {
                     }
                     continue;
                 }
-                push_ref(&mut out, kind, name, None, node, bytes, &manual.locals);
+                push_ref(&mut out, kind, name, None, node, &manual.locals);
                 continue;
             }
             let pair: Option<(Node, Node)> = if kind == RawRefKind::New {
@@ -349,12 +409,12 @@ pub fn parse_file(rel: &str, bytes: &[u8]) -> RawFile {
                 } else {
                     (Some(truncate(&recv_raw, 64)), prop)
                 };
-                push_ref(&mut out, kind, name, recv, node, bytes, &manual.locals);
+                push_ref(&mut out, kind, name, recv, node, &manual.locals);
             }
         }
     }
 
-    if jsx_mode {
+    if lang == Lang::Tsx {
         if let Some(g) = &set.jsx {
             let mut matches = cursor.matches(&g.query, root, bytes);
             while let Some(m) = matches.next() {
@@ -379,23 +439,17 @@ pub fn parse_file(rel: &str, bytes: &[u8]) -> RawFile {
                     Some((a, b)) => (Some(a.to_string()), b.to_string()),
                     None => (None, full),
                 };
-                push_ref(
-                    &mut out,
-                    RawRefKind::Jsx,
-                    name,
-                    recv,
-                    node,
-                    bytes,
-                    &manual.locals,
-                );
+                push_ref(&mut out, RawRefKind::Jsx, name, recv, node, &manual.locals);
             }
         }
     }
 
-    // extends / implements：手写遍历 class_heritage 子树（grammar 命名不稳定，query 反而脆）
-    collect_heritage(root, bytes, &manual.locals, &mut out);
+    match lang {
+        Lang::Ts | Lang::Tsx => collect_heritage(root, bytes, &manual.locals, &mut out),
+        Lang::Python => collect_python_bases(root, bytes, &mut out),
+    }
 
-    // 合成匿名 default 导出
+    // 合成匿名 default 导出（TS 专属：export default <匿名表达式>）
     for (kind, name, span, ls, le) in &manual.synthetic_defaults {
         out.symbols.push(RawSymbol {
             kind: *kind,
@@ -410,10 +464,12 @@ pub fn parse_file(rel: &str, bytes: &[u8]) -> RawFile {
         });
     }
 
-    // export { a, b as c }（无 source）名单 → 标记文件内顶层同名符号为导出
-    for sym in out.symbols.iter_mut() {
-        if sym.container.is_none() && manual.exported_clause_names.contains(&sym.name) {
-            sym.exported = true;
+    // export { a, b as c }（无 source）名单 → 标记文件内顶层同名符号为导出（TS 专属）
+    if lang != Lang::Python {
+        for sym in out.symbols.iter_mut() {
+            if sym.container.is_none() && manual.exported_clause_names.contains(&sym.name) {
+                sym.exported = true;
+            }
         }
     }
 
@@ -427,7 +483,6 @@ fn push_ref(
     name: String,
     receiver: Option<String>,
     node: Node<'_>,
-    _bytes: &[u8],
     locals: &HashSet<String>,
 ) {
     // 遮蔽判定只对裸名字调用有意义；成员调用的属性名不受局部变量遮蔽影响
@@ -454,7 +509,7 @@ struct ManualInfo {
     exported_clause_names: Vec<String>,
 }
 
-fn manual_walk(root: Node<'_>, bytes: &[u8]) -> ManualInfo {
+fn manual_walk(root: Node<'_>, lang: Lang, bytes: &[u8]) -> ManualInfo {
     let mut info = ManualInfo {
         error_count: 0,
         locals: HashSet::new(),
@@ -470,15 +525,15 @@ fn manual_walk(root: Node<'_>, bytes: &[u8]) -> ManualInfo {
             info.error_count += 1;
         }
         match node.kind() {
-            "variable_declarator" => {
+            "variable_declarator" if lang != Lang::Python => {
                 let name = node.child_by_field_name("name").map(|n| text(n, bytes));
                 let value = node.child_by_field_name("value");
                 if let (Some(name), Some(value)) = (name, value) {
                     match value.kind() {
                         "arrow_function" | "function_expression" => {} // query 通道已捕获为符号
-                        "call_expression"
+                        "call_expression" => {
                             // const x = require("y")：CJS 导入，绑定名 = 变量名
-                            if is_require_call(value, bytes) => {
+                            if is_require_call(value, bytes) {
                                 if let Some(spec) = first_string_arg(value, bytes) {
                                     info.imports.push(RawImport {
                                         spec,
@@ -487,29 +542,72 @@ fn manual_walk(root: Node<'_>, bytes: &[u8]) -> ManualInfo {
                                         remote: None,
                                     });
                                 }
+                            } else {
+                                info.locals.insert(name);
                             }
+                        }
                         _ => {
                             info.locals.insert(name);
                         }
                     }
                 }
             }
-            "required_parameter" | "optional_parameter" => {
+            "required_parameter" | "optional_parameter" if lang != Lang::Python => {
                 if let Some(p) = node.child_by_field_name("pattern") {
                     if p.kind() == "identifier" {
                         info.locals.insert(text(p, bytes));
                     }
                 }
             }
-            "catch_clause" => {
+            "catch_clause" if lang != Lang::Python => {
                 if let Some(p) = node.child_by_field_name("parameter") {
                     if p.kind() == "identifier" {
                         info.locals.insert(text(p, bytes));
                     }
                 }
             }
-            "import_statement" => parse_import_statement(node, bytes, &mut info),
-            "export_statement" => parse_export_statement(node, bytes, &mut info),
+            "assignment" if lang == Lang::Python => {
+                // x = ... / a, b = ...：赋值目标进局部名（遮蔽检测）
+                if let Some(left) = node.child_by_field_name("left") {
+                    collect_pattern_names(left, bytes, &mut info.locals);
+                }
+            }
+            "parameters" if lang == Lang::Python => {
+                // 函数参数（含 self/cls）：直接子节点或一层包裹里的 identifier
+                for child in children_of(node) {
+                    match child.kind() {
+                        "identifier" => {
+                            info.locals.insert(text(child, bytes));
+                        }
+                        "default_parameter" | "typed_parameter" => {
+                            for c in children_of(child) {
+                                if c.kind() == "identifier" {
+                                    info.locals.insert(text(c, bytes));
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            "for_in_clause" if lang == Lang::Python => {
+                if let Some(left) = node.child_by_field_name("left") {
+                    collect_pattern_names(left, bytes, &mut info.locals);
+                }
+            }
+            "import_statement" => {
+                if lang == Lang::Python {
+                    parse_import_py(node, bytes, &mut info);
+                } else {
+                    parse_import_statement(node, bytes, &mut info);
+                }
+            }
+            "import_from_statement" if lang == Lang::Python => {
+                parse_import_from_py(node, bytes, &mut info);
+            }
+            "export_statement" if lang != Lang::Python => {
+                parse_export_statement(node, bytes, &mut info);
+            }
             _ => {}
         }
         for child in children_of(node) {
@@ -517,6 +615,170 @@ fn manual_walk(root: Node<'_>, bytes: &[u8]) -> ManualInfo {
         }
     }
     info
+}
+
+/// python 赋值/for 目标里的名字（单个标识符或元组解包）
+fn collect_pattern_names(node: Node<'_>, bytes: &[u8], locals: &mut HashSet<String>) {
+    match node.kind() {
+        "identifier" => {
+            locals.insert(text(node, bytes));
+        }
+        "tuple" | "list" | "pattern_list" => {
+            for c in children_of(node) {
+                collect_pattern_names(c, bytes, locals);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// python: import a.b / import a.b as c。
+/// python 的裸 `import a.b` 把顶层包名 a 绑进作用域；为了解析 `a.b.f()` 这种
+/// 带点接收者，额外把 a.b 也绑成命名空间别名（它是真实模块路径，不会产生假边）。
+fn parse_import_py(node: Node<'_>, bytes: &[u8], info: &mut ManualInfo) {
+    for child in children_of(node) {
+        match child.kind() {
+            "dotted_name" => {
+                let dotted = text(child, bytes);
+                info.imports.push(RawImport {
+                    spec: dotted.clone(),
+                    kind: RawImportKind::Namespace,
+                    local: Some(dotted.split('.').next().unwrap_or(&dotted).to_string()),
+                    remote: None,
+                });
+                if dotted.contains('.') {
+                    info.imports.push(RawImport {
+                        local: Some(dotted.clone()),
+                        spec: dotted,
+                        kind: RawImportKind::Namespace,
+                        remote: None,
+                    });
+                }
+            }
+            "aliased_import" => {
+                let name = child
+                    .child_by_field_name("name")
+                    .map(|n| text(n, bytes))
+                    .unwrap_or_default();
+                let alias = child
+                    .child_by_field_name("alias")
+                    .map(|n| text(n, bytes))
+                    .unwrap_or_else(|| name.clone());
+                info.imports.push(RawImport {
+                    spec: name,
+                    kind: RawImportKind::Namespace,
+                    local: Some(alias),
+                    remote: None,
+                });
+            }
+            _ => {}
+        }
+    }
+}
+
+/// python: from x import a, b as c / from . import x / from ..pkg import y。
+/// 相对导入编码成 "rel:{点数}:{模块路径}"，解析层按 python 语义还原。
+fn parse_import_from_py(node: Node<'_>, bytes: &[u8], info: &mut ManualInfo) {
+    let Some(module_node) = node.child_by_field_name("module_name") else {
+        return;
+    };
+    let module_id = module_node.id();
+    let spec = match module_node.kind() {
+        "relative_import" => {
+            let dots = children_of(module_node)
+                .iter()
+                .filter(|c| c.kind() == ".")
+                .count();
+            let mod_text = children_of(module_node)
+                .into_iter()
+                .find(|c| c.kind() == "dotted_name")
+                .map(|c| text(c, bytes))
+                .unwrap_or_default();
+            format!("rel:{dots}:{mod_text}")
+        }
+        _ => text(module_node, bytes),
+    };
+    for child in children_of(node) {
+        match child.kind() {
+            "dotted_name" => {
+                // 跳过 module_name 本身（它也是 dotted_name）
+                if child.id() == module_id {
+                    continue;
+                }
+                let name = text(child, bytes);
+                info.imports.push(RawImport {
+                    spec: spec.clone(),
+                    kind: RawImportKind::Named,
+                    local: Some(name.clone()),
+                    remote: Some(name),
+                });
+            }
+            "aliased_import" => {
+                let name = child
+                    .child_by_field_name("name")
+                    .map(|n| text(n, bytes))
+                    .unwrap_or_default();
+                let alias = child
+                    .child_by_field_name("alias")
+                    .map(|n| text(n, bytes))
+                    .unwrap_or_else(|| name.clone());
+                info.imports.push(RawImport {
+                    spec: spec.clone(),
+                    kind: RawImportKind::Named,
+                    local: Some(alias),
+                    remote: Some(name),
+                });
+            }
+            "wildcard_import" => {
+                // from a import *：无法枚举绑定名，只记文件级依赖
+                info.imports.push(RawImport {
+                    spec: spec.clone(),
+                    kind: RawImportKind::SideEffect,
+                    local: None,
+                    remote: None,
+                });
+            }
+            _ => {}
+        }
+    }
+}
+
+/// python 类基类：class X(Base, module.Base, metaclass=M):
+fn collect_python_bases(root: Node<'_>, bytes: &[u8], out: &mut RawFile) {
+    let mut stack = vec![root];
+    while let Some(node) = stack.pop() {
+        if node.kind() == "class_definition" {
+            if let Some(supers) = node.child_by_field_name("superclasses") {
+                for child in children_of(supers) {
+                    let name = match child.kind() {
+                        "identifier" => Some(text(child, bytes)),
+                        // module.Base → 取 Base（多数场景基类与被解析类同仓库同名可命中）
+                        "attribute" => children_of(child)
+                            .into_iter()
+                            .rev()
+                            .find(|c| c.kind() == "identifier")
+                            .map(|c| text(c, bytes)),
+                        // keyword_argument（如 metaclass=）跳过
+                        _ => None,
+                    };
+                    if let Some(name) = name {
+                        out.refs.push(RawRef {
+                            kind: RawRefKind::Extends,
+                            name,
+                            receiver: None,
+                            span: (child.byte_range().start, child.byte_range().end),
+                            line_start: row_start(child),
+                            shadowed: false,
+                            owner: None,
+                        });
+                    }
+                }
+            }
+        }
+        for child in children_of(node) {
+            stack.push(child);
+        }
+    }
 }
 
 fn parse_import_statement(node: Node<'_>, bytes: &[u8], info: &mut ManualInfo) {
@@ -790,14 +1052,16 @@ fn jsx_tag_name<'a>(element: Node<'a>) -> Option<Node<'a>> {
     None
 }
 
-// ---------- 收尾：限定名 / 容器 / owner / 去重 ----------
-
 /// 调试用：缩进打印 AST 节点树（kind + 字节区间）。语言适配器作者用
 /// `codegraph debug-ast <file>` 观察真实 grammar 节点名，再写 .scm 规则。
 pub fn debug_tree(rel: &str, bytes: &[u8]) -> Option<String> {
-    let (lang, _) = language_for_path(rel)?;
+    let lang = Lang::from_path(rel)?;
+    let ts_lang = match lang {
+        Lang::Ts | Lang::Tsx => LANGUAGE_TYPESCRIPT.into(),
+        Lang::Python => LANGUAGE_PYTHON.into(),
+    };
     let mut parser = Parser::new();
-    parser.set_language(&lang).ok()?;
+    parser.set_language(&ts_lang).ok()?;
     let tree = parser.parse(bytes, None)?;
     let mut out = String::new();
     let mut stack = vec![(tree.root_node(), 0usize)];
@@ -822,6 +1086,8 @@ pub fn debug_tree(rel: &str, bytes: &[u8]) -> Option<String> {
     }
     Some(out)
 }
+
+// ---------- 收尾：限定名 / 容器 / owner / 去重 ----------
 
 fn finish_symbols(out: &mut RawFile) {
     // 容器：包含某符号的最小 span 符号（方法→类，内层函数→外层函数）
@@ -857,9 +1123,9 @@ fn finish_symbols(out: &mut RawFile) {
         out.symbols[i].qualified_name = qualified[i].clone();
     }
     // 重名去重（TS 函数重载会产出同名声明）：保留先出现者，合并导出标志
-    let mut kept: Vec<RawSymbol> = Vec::new();
     let mut first_kept_pos: std::collections::HashMap<String, usize> =
         std::collections::HashMap::new();
+    let mut kept: Vec<RawSymbol> = Vec::new();
     for s in out.symbols.drain(..) {
         match first_kept_pos.get(&s.qualified_name) {
             Some(&p) => {
@@ -872,9 +1138,9 @@ fn finish_symbols(out: &mut RawFile) {
             }
         }
     }
-    // swap_remove 打乱了顺序，重新按 span 排序恢复确定性
+    // 按起始 span 排序恢复确定性（保持原有遍历语义）
     kept.sort_by_key(|s| s.span);
-    // 重算下标映射：swap_remove 后 owner 需要基于保留下来的符号重算
+    // 重算下标映射：owner 与容器以保留下来的符号为准
     let spans: Vec<(usize, usize)> = kept.iter().map(|s| s.span).collect();
     for r in out.refs.iter_mut() {
         let (ri, re) = r.span;
@@ -888,7 +1154,6 @@ fn finish_symbols(out: &mut RawFile) {
         }
         r.owner = best;
     }
-    // 容器下标同样以保留后的顺序重算
     let n2 = kept.len();
     for i in 0..n2 {
         let (si, ei) = spans[i];

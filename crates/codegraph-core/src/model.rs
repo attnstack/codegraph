@@ -308,3 +308,23 @@ pub struct SearchHit {
     pub node: NodeRef,
     pub match_kind: String,
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CalleesReport {
+    pub symbol: NodeRef,
+    pub callees: Vec<Caller>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DeadCodeReport {
+    pub items: Vec<NodeRef>,
+    pub scanned: usize,
+    pub note: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CyclesReport {
+    /// 每个 import 环：文件路径列表（按路径排序）
+    pub cycles: Vec<Vec<String>>,
+    pub scanned_files: usize,
+}

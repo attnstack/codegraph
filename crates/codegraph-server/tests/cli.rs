@@ -140,6 +140,31 @@ fn full_cli_walkthrough() {
         "createOrder→charge→format 应为 2 跳: {v}"
     );
 
+    // 4b) callees charge：下游是 log 和 format
+    let (code, out) = run(
+        &["callees", "charge", "--json", "--root", &root],
+        repo.path(),
+    );
+    assert_eq!(code, 0, "callees 失败: {out}");
+    let v: Value = serde_json::from_str(out.trim()).unwrap();
+    let targets: Vec<&str> = v["callees"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["node"]["qualified_name"].as_str().unwrap())
+        .collect();
+    assert!(
+        targets.contains(&"format"),
+        "callees 缺少 format: {targets:?}"
+    );
+    assert!(targets.contains(&"log"), "callees 缺少 log: {targets:?}");
+
+    // 4c) dead-code 与 cycles 可执行
+    let (code, _) = run(&["dead-code", "--json", "--root", &root], repo.path());
+    assert_eq!(code, 0, "dead-code 失败");
+    let (code, _) = run(&["cycles", "--json", "--root", &root], repo.path());
+    assert_eq!(code, 0, "cycles 失败");
+
     // 5) search
     let (code, out) = run(
         &["search", "charge", "--json", "--root", &root],
@@ -307,15 +332,20 @@ fn mcp_stdio_handshake_and_tool_call() {
         .iter()
         .map(|t| t["name"].as_str().unwrap())
         .collect();
+    let mut tools = tools;
+    tools.sort_unstable();
     assert_eq!(
         tools,
         vec![
-            "who_calls",
-            "impact",
-            "trace",
+            "archaeology",
+            "callees",
+            "cycles",
+            "dead_code",
             "hotspots",
+            "impact",
             "search",
-            "archaeology"
+            "trace",
+            "who_calls"
         ],
         "工具清单不符: {tools:?}"
     );

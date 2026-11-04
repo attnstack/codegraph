@@ -24,7 +24,7 @@ pub enum StoreError {
 pub type StoreResult<T> = Result<T, StoreError>;
 
 /// 单个文件的拉平材料：(path, nodes, imports, refs)，未变更文件重建视图用
-pub type FileMaterial = (String, Vec<NodeRow>, Vec<ImportRow>, Vec<RefRow>);
+pub type FileMaterial = (String, String, Vec<NodeRow>, Vec<ImportRow>, Vec<RefRow>);
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FileRow {
@@ -47,6 +47,8 @@ pub struct FileMeta {
     pub loc: i64,
     /// ok | partial
     pub status: String,
+    /// ts | python
+    pub lang: String,
     pub error: Option<String>,
 }
 
@@ -104,7 +106,11 @@ impl GraphDb {
         let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         if version < 1 {
             conn.execute_batch(include_str!("schema.sql"))?;
-            conn.pragma_update(None, "user_version", 1)?;
+            conn.pragma_update(None, "user_version", 2)?;
+        } else if version == 1 {
+            // v1 -> v2：files 加 lang 列（python 语言支持）
+            conn.execute_batch("ALTER TABLE files ADD COLUMN lang TEXT NOT NULL DEFAULT 'ts';")?;
+            conn.pragma_update(None, "user_version", 2)?;
         }
         Ok(GraphDb {
             conn,
@@ -160,13 +166,19 @@ impl GraphDb {
     /// 返回按 path 排序的 (path, nodes, imports, refs)。nodes 含文件节点（kind=file）。
     pub fn load_view_material(&self) -> StoreResult<Vec<FileMaterial>> {
         // 分三次全量查询再按 file_id 分组（比每文件一查少 N 次 round-trip）
-        let mut by_file: HashMap<i64, String> = HashMap::new();
+        let mut by_file: HashMap<i64, (String, String)> = HashMap::new();
         {
-            let mut stmt = self.conn.prepare("SELECT id, path FROM files")?;
-            let rows = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?;
+            let mut stmt = self.conn.prepare("SELECT id, path, lang FROM files")?;
+            let rows = stmt.query_map([], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })?;
             for row in rows {
-                let (id, path) = row?;
-                by_file.insert(id, path);
+                let (id, path, lang) = row?;
+                by_file.insert(id, (path, lang));
             }
         }
         let mut nodes: HashMap<i64, Vec<NodeRow>> = HashMap::new();
@@ -258,9 +270,10 @@ impl GraphDb {
             }
         }
         let mut out = Vec::new();
-        for (fid, path) in by_file {
+        for (fid, (path, lang)) in by_file {
             out.push((
                 path,
+                lang,
                 nodes.remove(&fid).unwrap_or_default(),
                 imports.remove(&fid).unwrap_or_default(),
                 refs.remove(&fid).unwrap_or_default(),
@@ -287,15 +300,15 @@ impl GraphDb {
         let mut file_ids: Vec<i64> = Vec::with_capacity(plan.file_metas.len());
         {
             let mut stmt = tx.prepare(
-                "INSERT INTO files(path, hash, size, mtime_ns, loc, status, error)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                "INSERT INTO files(path, hash, size, mtime_ns, loc, status, lang, error)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
                  ON CONFLICT(path) DO UPDATE SET hash = excluded.hash, size = excluded.size,
                    mtime_ns = excluded.mtime_ns, loc = excluded.loc, status = excluded.status,
-                   error = excluded.error",
+                   lang = excluded.lang, error = excluded.error",
             )?;
             for m in &plan.file_metas {
                 stmt.execute(params![
-                    m.path, m.hash, m.size, m.mtime_ns, m.loc, m.status, m.error
+                    m.path, m.hash, m.size, m.mtime_ns, m.loc, m.status, m.lang, m.error
                 ])?;
             }
         }

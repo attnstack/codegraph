@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS files(
   mtime_ns INTEGER NOT NULL,
   loc INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'ok',
+  lang TEXT NOT NULL DEFAULT 'ts',
   error TEXT
 );
 

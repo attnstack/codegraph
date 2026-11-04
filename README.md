@@ -1,6 +1,8 @@
 # codegraph
 
-改一行代码，怎么知道会波及哪些地方？IDE 的"查找引用"只给一跳，全局搜索只会匹配文本。codegraph 用 [tree-sitter](https://tree-sitter.github.io/) 把整个 TypeScript/JavaScript 仓库解析成一张调用图（函数 / 类 / 文件 × 调用 / 继承 / 导入），然后直接回答：
+[中文](README.md) | [English](README_EN.md)
+
+改一行代码，怎么知道会波及哪些地方？IDE 的"查找引用"只给一跳，全局搜索只会匹配文本。codegraph 用 [tree-sitter](https://tree-sitter.github.io/) 把整个 TypeScript/JavaScript（以及 Python）仓库解析成一张调用图（函数 / 类 / 文件 × 调用 / 继承 / 导入），然后直接回答：
 
 - **谁调用了它** —— 每个调用点带源码位置
 - **改它影响谁** —— 影响面按风险排序，每条附完整调用链
@@ -26,8 +28,13 @@ cargo build --release
 ./target/release/codegraph who-calls charge --root fixtures/demo-app
 ./target/release/codegraph impact charge --root fixtures/demo-app
 ./target/release/codegraph trace Checkout.createOrder format --root fixtures/demo-app
+./target/release/codegraph callees charge --root fixtures/demo-app      # 它调用了谁
+./target/release/codegraph dead-code --root fixtures/demo-app           # 孤儿函数
+./target/release/codegraph cycles --root fixtures/demo-py               # import 循环（python 仓库）
 ./target/release/codegraph hotspots --root fixtures/demo-app
 ```
+
+Python 仓库用法完全一样——试试 `--root fixtures/demo-py`。
 
 `impact` 的输出长上面截图那样：按风险排序的受影响清单 + 每条的证据链。风险分的算法在[架构文档](docs/ARCHITECTURE.md)里，一句话版本是"沿调用链每跳衰减 0.8，不同边类型不同权重"。
 
@@ -54,7 +61,7 @@ docker run -i --rm -v /path/to/your/repo:/repo codegraph        # 起 MCP stdio
 docker run --rm -v /path/to/your/repo:/repo codegraph index --root /repo   # 当 CLI 用
 ```
 
-提供 6 个工具：`who_calls` / `impact` / `trace` / `hotspots` / `search` / `archaeology`。改完文件不用手动重建——每次工具调用前会做 mtime/size 预筛，发现漂移自动增量更新。协议实现是手写的最小 JSON-RPC 子集，用官方 TypeScript SDK 做了[契约测试](tests-ts/)（这也是 CI 的一部分）。
+提供 9 个工具：`who_calls` / `impact` / `trace` / `callees` / `dead_code` / `cycles` / `hotspots` / `search` / `archaeology`。改完文件不用手动重建——每次工具调用前会做 mtime/size 预筛，发现漂移自动增量更新。协议实现是手写的最小 JSON-RPC 子集，用官方 TypeScript SDK 做了[契约测试](tests-ts/)（这也是 CI 的一部分）。
 
 `archaeology` 单独说一下：基于 `git blame -C` 做代码考古，输入一个符号，返回它每行是哪个 commit 引入的、谁写的、关联哪个 PR。接手别人的老模块时挺好用。
 
@@ -100,7 +107,7 @@ graph LR
 - JS 没有类型信息，`obj.method()` 这类调用很多解析不出来，进了 dynamic 桶。要彻底解决得接 tsc 的类型表，暂时没做。
 - 装饰器路由、DI 容器、monkey-patch 这类运行时魔法，静态分析原则上无解，全部如实标 dynamic。
 - 证据链是调用链，不含数据流。严格的影响面要程序切片（SDG），是后面想做的方向。
-- 只支持 TS/JS。加一门语言 = 一个 grammar 依赖 + 一份 queries 文件 + 在 parse.rs 注册（见 [CONTRIBUTING](CONTRIBUTING.md)），架构是插件化的，但我还没写第二门。
+- 语言适配器覆盖 TS/JS 和 Python。加一门语言 = 一个 grammar 依赖 + 一份 queries 文件 + 在 parse.rs 注册（见 [CONTRIBUTING](CONTRIBUTING.md)）；python 的 import 环检测也顺带做了，但 barrel 式 re-export 链目前只在 TS 侧支持。
 - benchmark 用的是合成语料，真实大型 monorepo（workspace 协议、多层 tsconfig extends）没回归过。
 
 ## License

@@ -58,6 +58,7 @@ impl Default for Config {
                 "jsx".into(),
                 "mjs".into(),
                 "cjs".into(),
+                "py".into(),
             ],
             exclude_dirs: vec![
                 "node_modules".into(),

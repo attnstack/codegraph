@@ -66,6 +66,9 @@ test("initialize 握手与 tools/list 契约", async () => {
       const names = tools.tools.map((t) => t.name).sort();
       assert.deepEqual(names, [
         "archaeology",
+        "callees",
+        "cycles",
+        "dead_code",
         "hotspots",
         "impact",
         "search",

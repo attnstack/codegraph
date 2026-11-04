@@ -1,0 +1,49 @@
+# 打 tag 自动构建三平台二进制并挂到 GitHub Release。
+# 发布流程：改版本号 → git tag vX.Y.Z → git push origin vX.Y.Z
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: codegraph-linux-x64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: codegraph-windows-x64.exe
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: codegraph-macos-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+      - name: Rename artifact
+        shell: bash
+        run: |
+          mkdir -p dist
+          if [ -f "target/${{ matrix.target }}/release/codegraph.exe" ]; then
+            cp "target/${{ matrix.target }}/release/codegraph.exe" "dist/${{ matrix.artifact }}"
+          else
+            cp "target/${{ matrix.target }}/release/codegraph" "dist/${{ matrix.artifact }}"
+          fi
+          ls -la dist
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/${{ matrix.artifact }}

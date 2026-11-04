@@ -13,7 +13,7 @@
 use crate::config::Config;
 use crate::error::CoreResult;
 use crate::model::*;
-use crate::parse::{RawImportKind, RawRefKind};
+use crate::parse::{Lang, RawImportKind, RawRefKind};
 use crate::view::ViewRepo;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -74,6 +74,69 @@ const BUILTIN_GLOBALS: &[&str] = &[
     "vi",
     "jest",
     "assert",
+];
+/// python 内建/标准库入口：裸调用不可能指向仓库符号，必须拦截
+const PYTHON_BUILTINS: &[&str] = &[
+    "print",
+    "len",
+    "range",
+    "str",
+    "int",
+    "float",
+    "bool",
+    "list",
+    "dict",
+    "set",
+    "tuple",
+    "frozenset",
+    "bytes",
+    "open",
+    "super",
+    "isinstance",
+    "issubclass",
+    "getattr",
+    "setattr",
+    "hasattr",
+    "delattr",
+    "type",
+    "enumerate",
+    "zip",
+    "map",
+    "filter",
+    "sorted",
+    "reversed",
+    "sum",
+    "min",
+    "max",
+    "abs",
+    "round",
+    "any",
+    "all",
+    "iter",
+    "next",
+    "repr",
+    "hash",
+    "id",
+    "vars",
+    "dir",
+    "callable",
+    "format",
+    "input",
+    "staticmethod",
+    "classmethod",
+    "property",
+    "object",
+    "Exception",
+    "ValueError",
+    "TypeError",
+    "KeyError",
+    "IndexError",
+    "RuntimeError",
+    "NotImplementedError",
+    "StopIteration",
+    "AttributeError",
+    "__name__",
+    "__file__",
 ];
 const BUILTIN_RECEIVERS: &[&str] = &[
     "console",
@@ -381,6 +444,74 @@ pub fn resolve_spec(
     ImportTarget::Package(package_name(spec))
 }
 
+/// python 导入解析。相对导入编码为 "rel:{点数}:{模块}"；
+/// 绝对导入支持根目录与 src/ 两种布局；未命中一律视为第三方/标准库包（外部节点）。
+fn resolve_spec_python(spec: &str, from_dir: &str, files: &HashSet<String>) -> ImportTarget {
+    if let Some(rest) = spec.strip_prefix("rel:") {
+        let (n_str, module) = rest.split_once(':').unwrap_or((rest, ""));
+        let dots: usize = n_str.parse().unwrap_or(1);
+        // 第一个点 = 当前包（文件所在目录），每多一个点向上跳一级
+        let mut base = from_dir.to_string();
+        for _ in 1..dots.max(1) {
+            match base.rfind('/') {
+                Some(pos) => base.truncate(pos),
+                None => {
+                    base.clear();
+                    break;
+                }
+            }
+        }
+        let rel_path = if module.is_empty() {
+            base.clone()
+        } else {
+            format!("{}/{}", base, module.replace('.', "/"))
+        };
+        return try_python_file(&rel_path, files);
+    }
+    let rel = spec.replace('.', "/");
+    for base in ["", "src"] {
+        let path = if base.is_empty() {
+            rel.clone()
+        } else {
+            format!("{base}/{rel}")
+        };
+        if let ImportTarget::File(t) = try_python_file(&path, files) {
+            return ImportTarget::File(t);
+        }
+    }
+    ImportTarget::Package(package_name(spec))
+}
+
+fn try_python_file(base: &str, files: &HashSet<String>) -> ImportTarget {
+    if files.contains(base) {
+        return ImportTarget::File(base.to_string());
+    }
+    let py = format!("{base}.py");
+    if files.contains(&py) {
+        return ImportTarget::File(py);
+    }
+    let init = format!("{base}/__init__.py");
+    if files.contains(&init) {
+        return ImportTarget::File(init);
+    }
+    ImportTarget::NotFound
+}
+
+/// `from 模块 import 名字` 的子模块候选：a import x → a.x
+fn python_sub_spec(spec: &str, name: &str) -> String {
+    if let Some(rest) = spec.strip_prefix("rel:") {
+        let (n_str, module) = rest.split_once(':').unwrap_or((rest, ""));
+        let joined = if module.is_empty() {
+            name.to_string()
+        } else {
+            format!("{module}.{name}")
+        };
+        format!("rel:{n_str}:{joined}")
+    } else {
+        format!("{spec}.{name}")
+    }
+}
+
 // ---------- 解析主流程 ----------
 
 pub struct ResolveOutput {
@@ -482,7 +613,12 @@ pub fn resolve_all(view: &ViewRepo, cfg: &Config) -> CoreResult<ResolveOutput> {
             None => "",
         };
         for imp in &vf.imports {
-            let target = resolve_spec(&imp.spec, from_dir, &files_set, ts.as_ref());
+            let is_py = vf.lang == Lang::Python;
+            let target = if is_py {
+                resolve_spec_python(&imp.spec, from_dir, &files_set)
+            } else {
+                resolve_spec(&imp.spec, from_dir, &files_set, ts.as_ref())
+            };
             tables[fi].specs.insert(imp.spec.clone(), target.clone());
             let (target_path, package) = match &target {
                 ImportTarget::File(f) => (Some(f.clone()), None),
@@ -512,6 +648,39 @@ pub fn resolve_all(view: &ViewRepo, cfg: &Config) -> CoreResult<ResolveOutput> {
                 package: package.clone(),
             });
             match imp.kind {
+                RawImportKind::Named if is_py => {
+                    // python `from 模块 import 名字`：名字可能是子模块（demo_py.services.payment）
+                    // 也可能是模块内符号（charge）。先探子模块，命中就绑成命名空间；
+                    // 否则绑成具名导入，走 resolve_export 找模块内符号。
+                    if let (Some(local), Some(remote)) = (&imp.local, &imp.remote) {
+                        let sub = resolve_spec_python(
+                            &python_sub_spec(&imp.spec, remote),
+                            from_dir,
+                            &files_set,
+                        );
+                        if let ImportTarget::File(sub_file) = sub {
+                            tables[fi].bindings.insert(
+                                local.clone(),
+                                Binding {
+                                    kind: BindingKind::Namespace,
+                                    target_file: Some(sub_file),
+                                    package: None,
+                                    remote: None,
+                                },
+                            );
+                        } else if let Some(tf) = &target_path {
+                            tables[fi].bindings.insert(
+                                local.clone(),
+                                Binding {
+                                    kind: BindingKind::Named,
+                                    target_file: Some(tf.clone()),
+                                    package: None,
+                                    remote: Some(remote.clone()),
+                                },
+                            );
+                        }
+                    }
+                }
                 RawImportKind::Named => {
                     if let (Some(local), Some(remote)) = (&imp.local, &imp.remote) {
                         tables[fi].bindings.insert(
@@ -885,9 +1054,14 @@ pub fn resolve_all(view: &ViewRepo, cfg: &Config) -> CoreResult<ResolveOutput> {
                 (RefStatus::Dynamic, None)
             };
 
+            // python 的 self/cls 与 TS 的 this 同语义：在 owner 所属类（沿继承链）找方法
+            let is_self_recv = |recv: &str| {
+                recv == "this" || (vf.lang == Lang::Python && (recv == "self" || recv == "cls"))
+            };
+
             match (&r.receiver, r.kind) {
                 // this.method()：在 owner 所属类（沿继承链）里找方法
-                (Some(recv), _) if recv == "this" => {
+                (Some(recv), _) if is_self_recv(recv) => {
                     // owner 链向上找最近的类
                     let mut cur = r.owner;
                     let mut class_temp: Option<usize> = None;
@@ -977,8 +1151,12 @@ pub fn resolve_all(view: &ViewRepo, cfg: &Config) -> CoreResult<ResolveOutput> {
                                 }
                             }
                         }
-                    } else if BUILTIN_RECEIVERS.contains(&recv.as_str()) {
+                    } else if vf.lang != Lang::Python && BUILTIN_RECEIVERS.contains(&recv.as_str())
+                    {
                         status = RefStatus::Builtin;
+                    } else if vf.lang == Lang::Python {
+                        // python 没有内建「对象接收者」概念，未知对象一律不猜
+                        status = RefStatus::Dynamic;
                     } else {
                         // 本地类名作接收者：Utils.helper() where class Utils
                         let mut hit = None;
@@ -1018,7 +1196,10 @@ pub fn resolve_all(view: &ViewRepo, cfg: &Config) -> CoreResult<ResolveOutput> {
                     } else if let Some(&t) = tables[fi].by_name.get(&r.name) {
                         status = RefStatus::Resolved;
                         target = Some(t);
-                    } else if BUILTIN_GLOBALS.contains(&r.name.as_str()) {
+                    } else if match vf.lang {
+                        Lang::Python => PYTHON_BUILTINS.contains(&r.name.as_str()),
+                        _ => BUILTIN_GLOBALS.contains(&r.name.as_str()),
+                    } {
                         status = RefStatus::Builtin;
                     } else {
                         match global_exports.get(&r.name).map(|v| v.len()).unwrap_or(0) {

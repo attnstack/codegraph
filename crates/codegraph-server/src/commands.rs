@@ -171,8 +171,9 @@ pub fn run_build(cfg: &Config, force: bool) -> Result<BuildStatsPublic> {
     for f in &discovered {
         if let Some(raw) = parsed.get(&f.rel) {
             view_files.push(ViewFile::from_raw(&f.rel, raw.clone()));
-        } else if let Some((_, nodes, imports, refs)) = material.get(&f.rel) {
-            view_files.push(ViewFile::from_rows(&f.rel, nodes, imports, refs));
+        } else if let Some((_, _lang, nodes, imports, refs)) = material.get(&f.rel) {
+            let lang = codegraph_core::parse::Lang::from_path(&f.rel).unwrap_or_default();
+            view_files.push(ViewFile::from_rows(&f.rel, lang, nodes, imports, refs));
         }
         // else: 发现与 DB 之间竞态（文件刚被删），下一轮自愈，这里静默跳过
     }
@@ -203,6 +204,7 @@ pub fn run_build(cfg: &Config, force: bool) -> Result<BuildStatsPublic> {
             size,
             mtime_ns,
             loc,
+            lang: vf.lang.as_str().to_string(),
             status: if error.is_some() {
                 "partial".into()
             } else {
