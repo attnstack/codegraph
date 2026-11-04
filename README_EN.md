@@ -104,6 +104,10 @@ Honestly: at this scale a full rebuild is fast enough that incremental isn't fas
 - Language adapters exist for TS/JS and Python. Adding one = a grammar dependency + a queries file + registration in parse.rs (see [CONTRIBUTING](CONTRIBUTING.md)); the architecture is pluggable.
 - Benchmarks use a synthetic corpus; real large monorepos (workspace protocols, multi-level tsconfig extends) haven't been regression-tested.
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) (Chinese).
+
 ## License
 
 [MIT](LICENSE)

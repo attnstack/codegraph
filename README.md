@@ -112,6 +112,10 @@ graph LR
 - 语言适配器覆盖 TS/JS 和 Python。加一门语言 = 一个 grammar 依赖 + 一份 queries 文件 + 在 parse.rs 注册（见 [CONTRIBUTING](CONTRIBUTING.md)）；python 的 import 环检测也顺带做了，但 barrel 式 re-export 链目前只在 TS 侧支持。
 - benchmark 用的是合成语料，真实大型 monorepo（workspace 协议、多层 tsconfig extends）没回归过。
 
+## 更新日志
+
+版本历史见 [CHANGELOG.md](CHANGELOG.md)。
+
 ## License
 
 [MIT](LICENSE)

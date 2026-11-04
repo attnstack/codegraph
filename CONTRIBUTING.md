@@ -39,6 +39,13 @@ cd tests-ts && npm install && node --test
   - 动了查询语义 → 更新 golden 快照（`UPDATE_SNAPSHOTS=1 cargo test -p codegraph-server --test golden`）并在 PR 里贴 diff 说明。
 - 提交信息用祈使句，第一行 ≤ 72 字符。
 
+## 发版流程
+
+1. 在 `CHANGELOG.md` 顶部加新版本段落（内容面向用户，不写提交粒度）
+2. 同步四处版本号：根 `Cargo.toml`、`server.json`、`packages/npm/package.json`、（如接口变更）registry 描述
+3. 提交后 `git tag vX.Y.Z && git push origin vX.Y.Z` —— CI 自动构建三平台二进制挂 Release
+4. `packages/npm` 下 `npm publish --registry=https://registry.npmjs.org`（prepublishOnly 会拦截残留二进制）
+
 ## 代码风格
 
 - 错误处理：可恢复用 `Result` + 类型化错误；禁止裸 `unwrap`（测试代码除外）。
