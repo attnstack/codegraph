@@ -1,0 +1,34 @@
+{
+  "name": "codegraph-mcp-server",
+  "version": "0.1.1",
+  "description": "Deterministic, explainable call graph for TS/JS and Python repos — who-calls, impact with evidence chains, tracing, cycles. CLI + MCP stdio.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/attnstack/codegraph"
+  },
+  "homepage": "https://github.com/attnstack/codegraph#readme",
+  "keywords": [
+    "mcp",
+    "code-analysis",
+    "tree-sitter",
+    "static-analysis",
+    "impact-analysis",
+    "call-graph",
+    "rust"
+  ],
+  "bin": {
+    "codegraph": "bin/codegraph.js"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "files": [
+    "bin",
+    "install.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=16"
+  }
+}

@@ -180,7 +180,18 @@ pub fn run_build(cfg: &Config, force: bool) -> Result<BuildStatsPublic> {
     let view = ViewRepo::new(view_files);
 
     // ---- 全量解析 + 落库 ----
-    let output = resolve::resolve_all(&view, cfg)?;
+    // 可选第四级解析：--types 时用 tsc sidecar 收集类型提示，三级失败处兜底
+    let mut hints: Option<codegraph_core::resolve::TypeHints> = None;
+    if cfg.use_types && crate::typesidecar::available(cfg) {
+        match crate::typesidecar::collect_hints(cfg, &view) {
+            Ok(h) => {
+                tracing::info!("tsc 类型提示 {} 条", h.map.len());
+                hints = Some(h);
+            }
+            Err(e) => tracing::warn!("tsc sidecar 失败，退化为纯语法解析: {e:#}"),
+        }
+    }
+    let output = resolve::resolve_all(&view, cfg, hints.as_ref())?;
     let mut file_metas: Vec<FileMeta> = Vec::with_capacity(view.files.len());
     for vf in &view.files {
         let (hash, size, mtime_ns, loc) =

@@ -397,3 +397,52 @@ fn mcp_stdio_handshake_and_tool_call() {
     let _ = child.kill();
     let _ = child.wait();
 }
+
+/// tsc 类型消歧端到端：`order.total()` 这类局部变量调用，
+/// 纯语法解析只能给 dynamic，--types 后经接收者类型命中 Order.total。
+#[test]
+fn types_sidecar_resolution() {
+    // 需要 node + npm 网络；typescript 从 registry 安装
+    let repo = TempRepo::new();
+    // Windows 上 npm 是批处理（npm.cmd），裸名 CreateProcess 找不到
+    let npm = if cfg!(windows) { "npm.cmd" } else { "npm" };
+    let inst = Command::new(npm)
+        .args(["install", "typescript", "--no-save", "--silent", "--no-audit", "--no-fund"])
+        .current_dir(repo.path())
+        .output()
+        .expect("启动 npm 失败");
+    let ts_dir = repo.path().join("node_modules/typescript/lib/typescript.js");
+    if !inst.status.success() || !ts_dir.exists() {
+        eprintln!("npm install typescript 不可用，跳过 tsc 测试");
+        return;
+    }
+    let root = repo.path().to_string_lossy().to_string();
+
+    // 对照组：不开 --types，order.total() 是 dynamic（无人调用它）
+    let (code, _) = run(&["index", "--root", &root], repo.path());
+    assert_eq!(code, 0);
+    let (code, out) = run(&["who-calls", "Order.total", "--json", "--root", &root], repo.path());
+    assert_eq!(code, 0, "{out}");
+    let v: Value = serde_json::from_str(out.trim()).unwrap();
+    assert!(
+        v["callers"].as_array().unwrap().is_empty(),
+        "不开 --types 时 Order.total 应无调用者: {out}"
+    );
+
+    // 实验组：--types 后 create_order 浮现
+    let (code, out) = run(&["index", "--root", &root, "--types"], repo.path());
+    assert_eq!(code, 0, "types index 失败: {out}");
+    let (code, out) = run(&["who-calls", "Order.total", "--json", "--root", &root], repo.path());
+    assert_eq!(code, 0, "{out}");
+    let v: Value = serde_json::from_str(out.trim()).unwrap();
+    let callers: Vec<&str> = v["callers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["node"]["qualified_name"].as_str().unwrap())
+        .collect();
+    assert!(
+        callers.contains(&"Checkout.create_order"),
+        "--types 后应解析出 create_order 调用 Order.total: {callers:?}"
+    );
+}

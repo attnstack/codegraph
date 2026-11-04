@@ -554,7 +554,24 @@ struct FileTables {
     reexports: Vec<ReExport>,
 }
 
-pub fn resolve_all(view: &ViewRepo, cfg: &Config) -> CoreResult<ResolveOutput> {
+/// tsc 类型提示（可选第四级解析的输入）：三级标准解析失败后，
+/// 用「接收者类型的声明文件 + 类型名」把原本 dynamic 的调用收窄。
+#[derive(Debug, Default)]
+pub struct TypeHints {
+    pub map: HashMap<(String, u32, String), TypeHintEntry>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeHintEntry {
+    pub recv_file: String,
+    pub recv_name: String,
+}
+
+pub fn resolve_all(
+    view: &ViewRepo,
+    cfg: &Config,
+    hints: Option<&TypeHints>,
+) -> CoreResult<ResolveOutput> {
     let ts = load_tsconfig(&cfg.root);
     let files_set = view.file_paths();
     let mut tables: Vec<FileTables> = (0..view.files.len())
@@ -1210,6 +1227,58 @@ pub fn resolve_all(view: &ViewRepo, cfg: &Config) -> CoreResult<ResolveOutput> {
                             }
                             0 => status = RefStatus::Dynamic,
                             _ => status = RefStatus::Ambiguous,
+                        }
+                    }
+                }
+            }
+
+            // 第四级：tsc 类型提示兜底。只在标准三级都判 dynamic 的成员调用上启用。
+            if status == RefStatus::Dynamic && r.kind == RawRefKind::Call && r.receiver.is_some() {
+                if let Some(hs) = hints {
+                    if let Some(entry) =
+                        hs.map.get(&(vf.path.clone(), r.line_start, r.name.clone()))
+                    {
+                        // 1) 接收者类型的声明文件里找同名类/接口 → 方法链上找属性
+                        let mut hit_class: Option<usize> = None;
+                        if let Some(&hfi) = view.file_index.get(&entry.recv_file) {
+                            for (si, s) in view.files[hfi].symbols.iter().enumerate() {
+                                if matches!(s.kind, NodeKind::Class | NodeKind::Interface)
+                                    && s.name == entry.recv_name
+                                {
+                                    hit_class = Some(symbol_temp(hfi, si));
+                                    break;
+                                }
+                            }
+                        }
+                        if let Some(ct) = hit_class {
+                            let mut seen_h = HashSet::new();
+                            if let Some(t) = lookup_method(
+                                view,
+                                &file_bases,
+                                &class_parent,
+                                ct,
+                                &r.name,
+                                0,
+                                &mut seen_h,
+                            ) {
+                                status = RefStatus::Resolved;
+                                target = Some(t);
+                            }
+                        }
+                        // 2) 类没命中 → 接收者可能是模块（命名空间导入），查其导出符号
+                        if status == RefStatus::Dynamic {
+                            let mut seen_m = HashSet::new();
+                            if let Some(t) = resolve_export(
+                                &tables,
+                                &view.file_index,
+                                &entry.recv_file,
+                                &r.name,
+                                0,
+                                &mut seen_m,
+                            ) {
+                                status = RefStatus::Resolved;
+                                target = Some(t);
+                            }
                         }
                     }
                 }

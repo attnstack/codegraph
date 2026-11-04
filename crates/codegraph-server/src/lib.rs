@@ -6,4 +6,5 @@ pub mod commands;
 pub mod git;
 pub mod mcp;
 pub mod output;
+pub mod typesidecar;
 pub mod watch;

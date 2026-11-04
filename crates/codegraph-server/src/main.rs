@@ -36,11 +36,15 @@ enum Cmd {
         root: Option<PathBuf>,
         #[arg(long, help = "强制全量重解析")]
         force: bool,
+        #[arg(long, help = "启用 tsc 类型消歧（需仓库有 node_modules/typescript）")]
+        types: bool,
     },
     /// 增量更新（与 index 等价，语义别名）
     Update {
         #[arg(long)]
         root: Option<PathBuf>,
+        #[arg(long)]
+        types: bool,
     },
     /// 谁调用了这个符号
     WhoCalls {
@@ -161,14 +165,20 @@ fn run(cli: Cli) -> anyhow::Result<i32> {
             codegraph_server::watch::run_watch(&cfg)?;
             Ok(0)
         }
-        Index { root, force } => {
-            let cfg = commands::load_cfg(root)?;
+        Index { root, force, types } => {
+            let mut cfg = commands::load_cfg(root)?;
+            if types {
+                cfg.use_types = true;
+            }
             let stats = commands::run_build(&cfg, force)?;
             output::print_build_stats(&stats, json)?;
             Ok(0)
         }
-        Update { root } => {
-            let cfg = commands::load_cfg(root)?;
+        Update { root, types } => {
+            let mut cfg = commands::load_cfg(root)?;
+            if types {
+                cfg.use_types = true;
+            }
             let stats = commands::run_build(&cfg, false)?;
             output::print_build_stats(&stats, json)?;
             Ok(0)

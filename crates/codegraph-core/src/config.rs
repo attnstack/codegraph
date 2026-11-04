@@ -44,6 +44,8 @@ pub struct Config {
     pub search_limit: usize,
     /// 查询前自动检测文件变化并增量重建（mtime+size 预筛 → hash 确认）
     pub auto_refresh: bool,
+    /// 可选第四级解析：node + typescript 可用时用 tsc 类型消歧（--types 开启）
+    pub use_types: bool,
 }
 
 impl Default for Config {
@@ -103,6 +105,7 @@ impl Default for Config {
             trace_depth: 5,
             search_limit: 50,
             auto_refresh: true,
+            use_types: false,
         }
     }
 }
