@@ -9,12 +9,11 @@ use anyhow::Result;
 use codegraph_core::config::Config;
 use codegraph_core::parse::Lang;
 use notify::Watcher;
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 /// 事件是否值得触发重建：只有源码文件、且不在排除目录（.codegraph/target 等）里才算。
 /// 用语言扩展名判定而不是全量事件——DB 自身的写盘会反向触发重建死循环。
-fn is_relevant(path: &PathBuf, cfg: &Config) -> bool {
+fn is_relevant(path: &std::path::Path, cfg: &Config) -> bool {
     let s = path.to_string_lossy().replace('\\', "/");
     for d in &cfg.exclude_dirs {
         if s.contains(&format!("/{d}/")) || s.ends_with(&format!("/{d}")) {
@@ -42,12 +41,10 @@ pub fn run_watch(cfg: &Config) -> Result<()> {
     let debounce = Duration::from_millis(600);
     let mut pending = false;
     let mut last_change = Instant::now();
-    let mut events_seen = 0usize;
 
     loop {
         match rx.recv_timeout(Duration::from_millis(300)) {
             Ok(Ok(event)) => {
-                events_seen += 1;
                 if event.paths.iter().any(|p| is_relevant(p, cfg)) {
                     pending = true;
                     last_change = Instant::now();
