@@ -407,11 +407,20 @@ fn types_sidecar_resolution() {
     // Windows 上 npm 是批处理（npm.cmd），裸名 CreateProcess 找不到
     let npm = if cfg!(windows) { "npm.cmd" } else { "npm" };
     let inst = Command::new(npm)
-        .args(["install", "typescript", "--no-save", "--silent", "--no-audit", "--no-fund"])
+        .args([
+            "install",
+            "typescript",
+            "--no-save",
+            "--silent",
+            "--no-audit",
+            "--no-fund",
+        ])
         .current_dir(repo.path())
         .output()
         .expect("启动 npm 失败");
-    let ts_dir = repo.path().join("node_modules/typescript/lib/typescript.js");
+    let ts_dir = repo
+        .path()
+        .join("node_modules/typescript/lib/typescript.js");
     if !inst.status.success() || !ts_dir.exists() {
         eprintln!("npm install typescript 不可用，跳过 tsc 测试");
         return;
@@ -421,7 +430,10 @@ fn types_sidecar_resolution() {
     // 对照组：不开 --types，order.total() 是 dynamic（无人调用它）
     let (code, _) = run(&["index", "--root", &root], repo.path());
     assert_eq!(code, 0);
-    let (code, out) = run(&["who-calls", "Order.total", "--json", "--root", &root], repo.path());
+    let (code, out) = run(
+        &["who-calls", "Order.total", "--json", "--root", &root],
+        repo.path(),
+    );
     assert_eq!(code, 0, "{out}");
     let v: Value = serde_json::from_str(out.trim()).unwrap();
     assert!(
@@ -432,7 +444,10 @@ fn types_sidecar_resolution() {
     // 实验组：--types 后 create_order 浮现
     let (code, out) = run(&["index", "--root", &root, "--types"], repo.path());
     assert_eq!(code, 0, "types index 失败: {out}");
-    let (code, out) = run(&["who-calls", "Order.total", "--json", "--root", &root], repo.path());
+    let (code, out) = run(
+        &["who-calls", "Order.total", "--json", "--root", &root],
+        repo.path(),
+    );
     assert_eq!(code, 0, "{out}");
     let v: Value = serde_json::from_str(out.trim()).unwrap();
     let callers: Vec<&str> = v["callers"]
