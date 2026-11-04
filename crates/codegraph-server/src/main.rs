@@ -25,6 +25,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
+    /// 监听文件变更自动增量重建（开发态）
+    Watch {
+        #[arg(long)]
+        root: Option<PathBuf>,
+    },
     /// 构建索引（增量：只重解析变化的文件）
     Index {
         #[arg(long, help = "仓库根目录，默认当前目录")]
@@ -151,6 +156,11 @@ fn run(cli: Cli) -> anyhow::Result<i32> {
     use Cmd::*;
     let json = cli.json;
     match cli.cmd {
+        Watch { root } => {
+            let cfg = commands::load_cfg(root)?;
+            codegraph_server::watch::run_watch(&cfg)?;
+            Ok(0)
+        }
         Index { root, force } => {
             let cfg = commands::load_cfg(root)?;
             let stats = commands::run_build(&cfg, force)?;

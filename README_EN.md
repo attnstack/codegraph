@@ -26,6 +26,8 @@ cargo build --release
 
 # Ask questions
 ./target/release/codegraph who-calls charge --root fixtures/demo-app
+# dev mode: auto-rebuild on save (run in a second terminal)
+./target/release/codegraph watch --root fixtures/demo-app
 ./target/release/codegraph impact charge --root fixtures/demo-app
 ./target/release/codegraph trace Checkout.createOrder format --root fixtures/demo-app
 ./target/release/codegraph callees charge --root fixtures/demo-app      # downstream

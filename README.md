@@ -26,6 +26,8 @@ cargo build --release
 
 # 问它问题
 ./target/release/codegraph who-calls charge --root fixtures/demo-app
+# 开发态：保存即自动增量重建（可另开一个终端挂着）
+./target/release/codegraph watch --root fixtures/demo-app
 ./target/release/codegraph impact charge --root fixtures/demo-app
 ./target/release/codegraph trace Checkout.createOrder format --root fixtures/demo-app
 ./target/release/codegraph callees charge --root fixtures/demo-app      # 它调用了谁
