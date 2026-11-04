@@ -19,7 +19,7 @@ cd tests-ts && npm install && node --test
 
 ## 如何添加一门新语言
 
-架构上的插件点只有三处，以 TypeScript 适配器为例（`crates/codegraph-core/src/parse.rs`）：
+架构上的插件点只有三处，TypeScript（`languages/typescript/queries.scm`）与 Python（`languages/python/queries.scm`）是两个已落地的参照实现。流程（以加 Python 时实际做的事为例）：
 
 1. **grammar 依赖**：`crates/codegraph-core/Cargo.toml` 加 `tree-sitter-<lang>`，
    注意运行时与 grammar 的 `tree-sitter-language` 版本必须兼容。

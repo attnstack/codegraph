@@ -117,7 +117,18 @@ refs(target_id)（反向查询）、refs(name) WHERE status IN dynamic/ambiguous
 | hotspots | 加权 PageRank（跨文件 ×1.5） | O(iter × E) | L1<1e-6 或 100 轮 |
 | search | SQL 精确 + 前缀 | O(log N) | 50 条 |
 | archaeology | git blame -C -C --line-porcelain | git 决定 | 行区间 |
+| callees | edges 正向 + refs 证据 join | O(deg) | — |
+| dead_code | 入度为零 + API 判定（TS 按导出性 / Python 按下划线私有约定） | O(N) | — |
+| cycles | imports 子图 Tarjan SCC | O(V+E) | — |
 
 风险分（impact）：`risk(n) = max_{p→n} risk(p) × 0.8^1 × type_w(edge)`，
 type_w：调用 1.0 / 重写 0.7 / 继承·实现 0.6；起点 risk=1。
+
+第四级解析（可选）：`index --types` 启用 tsc sidecar——嵌入式 Node 脚本建全项目
+类型图，回传成员调用「接收者类型的声明文件 + 类型名」，三级标准解析全部失败的
+调用在此收窄（命中图内类 → 方法链；或模块导出）。node/typescript 缺失时自动退化。
+
+语言适配器现状：TypeScript/TSX/JS + Python（0.25 grammar）。Python 特化点：
+相对导入（rel:{n}:{mod} 编码）、子模块命名空间绑定、self/cls 方法链、
+单下划线私有约定（dead_code API 判定）、dunder 排除。
 是对「Σ所有路径」（#P 难）的单源最优路径近似——README 已诚实标注。

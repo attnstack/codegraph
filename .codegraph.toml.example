@@ -29,3 +29,7 @@ trace-depth = 5
 
 # 查询前自动检测文件变化并增量重建（MCP 场景建议开启）
 auto-refresh = true
+
+# 可选第四级解析：node + 仓库内 node_modules/typescript 可用时用 tsc 类型消歧
+# （等价于 index --types；node/typescript 缺失时自动退化）
+use-types = false
